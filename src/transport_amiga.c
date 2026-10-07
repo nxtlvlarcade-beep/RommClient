@@ -29,52 +29,7 @@ static int parse_http(const char *url, au_t *u) {
     return 0;
 }
 static int open_sock(void){ if(SocketBase)return 0; SocketBase=OpenLibrary("bsdsocket.library",4); return SocketBase?0:-1; }
-static int connect_host(const au_t *u)
-{
-    struct hostent *h;
-    struct sockaddr_in a;
-    int s;
-
-    printf("[NET D01] open bsdsocket.library\n"); fflush(stdout);
-    if (open_sock()) {
-        printf("[NET D02] OpenLibrary FAILED\n"); fflush(stdout);
-        return -1;
-    }
-    printf("[NET D02] SocketBase=%p\n", (void *)SocketBase); fflush(stdout);
-
-    printf("[NET D03] gethostbyname(%s)\n", u->host); fflush(stdout);
-    h = gethostbyname((char *)u->host);
-    printf("[NET D04] gethostbyname -> %p\n", (void *)h); fflush(stdout);
-    if (!h) return -1;
-
-    printf("[NET D05] h_addr=%p h_length=%d addrtype=%d\n",
-           (void *)h->h_addr, (int)h->h_length, (int)h->h_addrtype); fflush(stdout);
-    if (!h->h_addr || h->h_length <= 0 ||
-        (size_t)h->h_length > sizeof(a.sin_addr)) return -1;
-
-    printf("[NET D06] socket(AF_INET,SOCK_STREAM,0)\n"); fflush(stdout);
-    s = socket(AF_INET, SOCK_STREAM, 0);
-    printf("[NET D07] socket -> %d\n", s); fflush(stdout);
-    if (s < 0) return -1;
-
-    memset(&a, 0, sizeof(a));
-    a.sin_family = AF_INET;
-    printf("[NET D08] htons(%u)\n", (unsigned)u->port); fflush(stdout);
-    a.sin_port = htons(u->port);
-
-    printf("[NET D09] memcpy address (%d bytes)\n", (int)h->h_length); fflush(stdout);
-    memcpy(&a.sin_addr, h->h_addr, (size_t)h->h_length);
-
-    printf("[NET D10] connect fd=%d sockaddr_size=%lu\n",
-           s, (unsigned long)sizeof(a)); fflush(stdout);
-    if (connect(s, (struct sockaddr *)&a, sizeof(a)) < 0) {
-        printf("[NET D11] connect FAILED\n"); fflush(stdout);
-        CloseSocket(s);
-        return -1;
-    }
-    printf("[NET D11] CONNECTED\n"); fflush(stdout);
-    return s;
-}
+static int connect_host(const au_t*u){ struct hostent*h; struct sockaddr_in a; int s;if(open_sock())return -1;h=gethostbyname((char*)u->host);if(!h)return -1;s=socket(AF_INET,SOCK_STREAM,0);if(s<0)return -1;memset(&a,0,sizeof(a));a.sin_family=AF_INET;a.sin_port=htons(u->port);memcpy(&a.sin_addr,h->h_addr,h->h_length);if(connect(s,(struct sockaddr*)&a,sizeof(a))<0){CloseSocket(s);return -1;}return s; }
 static int send_all(int s,const char*b,size_t n){while(n){int want=n>32767U?32767:(int)n;int k=send(s,(char*)b,want,0);if(k<=0)return -1;b+=k;n-=(size_t)k;}return 0;}
 static char *header_end(char*b,size_t n){size_t i;for(i=3;i<n;i++)if(b[i-3]=='\r'&&b[i-2]=='\n'&&b[i-1]=='\r'&&b[i]=='\n')return b+i+1;return NULL;}
 static long status_code(const char*b){long x=0;if(sscanf(b,"HTTP/%*s %ld",&x)!=1)return 0;return x;}
@@ -84,7 +39,7 @@ static int grow(char **buf,size_t *cap,size_t need){size_t nc;char*nb;if(need<=*
 /* Metadata GET: one buffer only. After reception the HTTP headers are removed
    in-place, avoiding the old second ~response-sized allocation/copy. */
 static int request_body(const char*url,const char*auth,char**out,size_t*outlen,long*status){
-    au_t u; int s,k,qn; char req[1536],tmp[512]; char*b=NULL,*body; size_t used=0,cap=0,hn,need,last_report=0;
+    au_t u; int s,k,qn; char req[1536],tmp[2048]; char*b=NULL,*body; size_t used=0,cap=0,hn,need,last_report=0;
     if(!out||!outlen||!status)return ROMM_ERR_ARGUMENT;*out=NULL;*outlen=0;*status=0;
     if(parse_http(url,&u))return ROMM_ERR_TRANSPORT;
     printf("[NET] host=%s port=%u path=%s\n",u.host,(unsigned)u.port,u.base[0]?u.base:"/");fflush(stdout);
@@ -92,16 +47,11 @@ static int request_body(const char*url,const char*auth,char**out,size_t*outlen,l
     qn=make_request(req,sizeof(req),&u,auth);if(qn<0){CloseSocket(s);return ROMM_ERR_ARGUMENT;}
     if(send_all(s,req,(size_t)qn)){CloseSocket(s);return ROMM_ERR_TRANSPORT;}printf("[NET] request sent\n");fflush(stdout);
     for(;;){
-        printf("[NET R01] before recv fd=%d buf=%p size=%lu\n",s,(void*)tmp,(unsigned long)sizeof(tmp));fflush(stdout);
         k=recv(s,tmp,(int)sizeof(tmp),0);
-        printf("[NET R02] recv returned %d\n",k);fflush(stdout);
         if(k==0)break;if(k<0){free(b);CloseSocket(s);printf("[NET] recv failed\n");fflush(stdout);return ROMM_ERR_TRANSPORT;}
-        printf("[NET R03] before grow used=%lu cap=%lu add=%d\n",(unsigned long)used,(unsigned long)cap,k);fflush(stdout);
         if((size_t)k>((size_t)-1)-used-1){free(b);CloseSocket(s);return ROMM_ERR_MEMORY;}
         need=used+(size_t)k+1;if(grow(&b,&cap,need)){free(b);CloseSocket(s);return ROMM_ERR_MEMORY;}
-        printf("[NET R04] after grow buffer=%p cap=%lu need=%lu\n",(void*)b,(unsigned long)cap,(unsigned long)need);fflush(stdout);
         memcpy(b+used,tmp,(size_t)k);used+=(size_t)k;
-        printf("[NET R05] copied used=%lu\n",(unsigned long)used);fflush(stdout);
         if(used-last_report>=65536U){printf("[NET] received %lu KB\n",(unsigned long)(used/1024U));fflush(stdout);last_report=used;}
     }
     CloseSocket(s);if(!b)return ROMM_ERR_TRANSPORT;b[used]=0;*status=status_code(b);body=header_end(b,used);if(!body){free(b);return ROMM_ERR_TRANSPORT;}
