@@ -8,6 +8,9 @@ static char*tokstr(const char*j,const mj_token_t*t){size_t n=t->end-t->start;cha
 static long tlong(const char*j,const mj_token_t*t){char b[64];size_t n=t->end-t->start;if(n>63)n=63;memcpy(b,j+t->start,n);b[n]=0;return strtol(b,NULL,10);}
 static unsigned long long tull(const char*j,const mj_token_t*t){char b[64];size_t n=t->end-t->start;if(n>63)n=63;memcpy(b,j+t->start,n);b[n]=0;return strtoull(b,NULL,10);}
 static int tbool(const char*j,const mj_token_t*t){return t->end-t->start==4&&!strncmp(j+t->start,"true",4);}
+static double tdouble(const char*j,const mj_token_t*t){char b[64];size_t n=(size_t)(t->end-t->start);if(n>63)n=63;memcpy(b,j+t->start,n);b[n]=0;return strtod(b,NULL);}
+static char *tokstr_unescape(const char*j,const mj_token_t*t){size_t n=(size_t)(t->end-t->start),i,o=0;char*p=malloc(n+1);if(!p)return NULL;for(i=0;i<n;i++){char c=j[t->start+(int)i];if(c=='\\'&&i+1<n){char e=j[t->start+(int)++i];switch(e){case 'n':p[o++]='\n';break;case 'r':p[o++]='\r';break;case 't':p[o++]='\t';break;case 'b':p[o++]='\b';break;case 'f':p[o++]='\f';break;case '"':p[o++]='"';break;case '\\':p[o++]='\\';break;case '/':p[o++]='/';break;default:p[o++]='?';break;}}else p[o++]=c;}p[o]=0;return p;}
+static char *join_string_array(const char*j,mj_token_t*t,int arr,int nt){int i;size_t need=1,count=0;char*out,*p;for(i=arr+1;i<nt&&t[i].start<t[arr].end;i=mj_skip(t,i,nt))if(t[i].parent==arr&&t[i].type==MJ_STRING){need+=(size_t)(t[i].end-t[i].start)+(count?2:0);count++;}out=malloc(need);if(!out)return NULL;p=out;*p=0;count=0;for(i=arr+1;i<nt&&t[i].start<t[arr].end;i=mj_skip(t,i,nt))if(t[i].parent==arr&&t[i].type==MJ_STRING){size_t n=(size_t)(t[i].end-t[i].start);if(count){*p++=',';*p++=' ';}memcpy(p,j+t[i].start,n);p+=n;count++;}*p=0;return out;}
 static char*urljoin(const char*b,const char*p){size_t a=strlen(b),n=strlen(p);char*o=malloc(a+n+2);if(!o)return NULL;strcpy(o,b);if(a&&b[a-1]=='/'&&*p=='/')p++;else if((!a||b[a-1]!='/')&&*p!='/')strcat(o,"/");strcat(o,p);return o;}
 static char*auth(const romm_client_t*c){char*o;size_t n;if(!c->token||!*c->token)return NULL;n=strlen(c->token)+8;o=malloc(n);if(o){strcpy(o,"Bearer ");strcat(o,c->token);}return o;}
 int romm_client_init(romm_client_t*c,const char*b,const char*t,romm_transport_t x){if(!c||!b||!x.get)return ROMM_ERR_ARGUMENT;memset(c,0,sizeof(*c));c->base_url=dupstr(b);c->token=dupstr(t?t:"");c->transport=x;if(!c->base_url||!c->token){romm_client_destroy(c);return ROMM_ERR_MEMORY;}return 0;}
@@ -21,6 +24,8 @@ void romm_platform_list_free(romm_platform_list_t*l){size_t i;if(!l)return;for(i
 void romm_game_free(romm_game_t *g) {
     if(!g)return;
     free(g->name); free(g->fs_name); free(g->platform_display_name);
+    free(g->summary); free(g->genres); free(g->developers); free(g->publishers);
+    free(g->game_modes); free(g->regions); free(g->path_cover_small); free(g->path_cover_large);
     memset(g,0,sizeof(*g));
 }
 
@@ -33,16 +38,45 @@ static int game_obj(const char*j,mj_token_t*t,int obj,int nt,romm_game_t*g) {
         v=i+1; if(v>=nt)break;
         if(mj_eq(j,&t[i],"id")) g->id=tlong(j,&t[v]);
         else if(mj_eq(j,&t[i],"platform_id")) g->platform_id=tlong(j,&t[v]);
-        else if(mj_eq(j,&t[i],"name") && t[v].type==MJ_STRING) g->name=tokstr(j,&t[v]);
-        else if(mj_eq(j,&t[i],"fs_name") && t[v].type==MJ_STRING) g->fs_name=tokstr(j,&t[v]);
-        else if(mj_eq(j,&t[i],"platform_display_name") && t[v].type==MJ_STRING)
-            g->platform_display_name=tokstr(j,&t[v]);
+        else if(mj_eq(j,&t[i],"fs_size_bytes")) g->fs_size_bytes=tull(j,&t[v]);
+        else if(mj_eq(j,&t[i],"name") && t[v].type==MJ_STRING) g->name=tokstr_unescape(j,&t[v]);
+        else if(mj_eq(j,&t[i],"fs_name") && t[v].type==MJ_STRING) g->fs_name=tokstr_unescape(j,&t[v]);
+        else if(mj_eq(j,&t[i],"platform_display_name") && t[v].type==MJ_STRING) g->platform_display_name=tokstr_unescape(j,&t[v]);
+        else if(mj_eq(j,&t[i],"summary") && t[v].type==MJ_STRING) g->summary=tokstr_unescape(j,&t[v]);
+        else if(mj_eq(j,&t[i],"regions") && t[v].type==MJ_ARRAY) g->regions=join_string_array(j,t,v,nt);
+        else if(mj_eq(j,&t[i],"path_cover_small") && t[v].type==MJ_STRING) g->path_cover_small=tokstr_unescape(j,&t[v]);
+        else if(mj_eq(j,&t[i],"path_cover_large") && t[v].type==MJ_STRING) g->path_cover_large=tokstr_unescape(j,&t[v]);
+        else if(mj_eq(j,&t[i],"has_manual")) g->has_manual=tbool(j,&t[v]);
+        else if(mj_eq(j,&t[i],"has_multiple_files")) g->has_multiple_files=tbool(j,&t[v]);
+        else if(mj_eq(j,&t[i],"metadatum") && t[v].type==MJ_OBJECT) {
+            int k=v+1;
+            while(k<nt && t[k].start<t[v].end) {
+                int mv;
+                if(t[k].parent!=v){k++;continue;}
+                mv=k+1;if(mv>=nt)break;
+                if(mj_eq(j,&t[k],"genres")&&t[mv].type==MJ_ARRAY)g->genres=join_string_array(j,t,mv,nt);
+                else if(mj_eq(j,&t[k],"developers")&&t[mv].type==MJ_ARRAY)g->developers=join_string_array(j,t,mv,nt);
+                else if(mj_eq(j,&t[k],"publishers")&&t[mv].type==MJ_ARRAY)g->publishers=join_string_array(j,t,mv,nt);
+                else if(mj_eq(j,&t[k],"game_modes")&&t[mv].type==MJ_ARRAY)g->game_modes=join_string_array(j,t,mv,nt);
+                else if(mj_eq(j,&t[k],"first_release_date"))g->first_release_date=(long long)tull(j,&t[mv]);
+                else if(mj_eq(j,&t[k],"average_rating"))g->average_rating=tdouble(j,&t[mv]);
+                k=mj_skip(t,mv,nt);
+            }
+        }
         i=mj_skip(t,v,nt);
     }
     if(!g->name)g->name=dupstr("");
     if(!g->fs_name)g->fs_name=dupstr("");
     if(!g->platform_display_name)g->platform_display_name=dupstr("");
-    if(!g->name||!g->fs_name||!g->platform_display_name){romm_game_free(g);return ROMM_ERR_MEMORY;}
+    if(!g->summary)g->summary=dupstr("");
+    if(!g->genres)g->genres=dupstr("");
+    if(!g->developers)g->developers=dupstr("");
+    if(!g->publishers)g->publishers=dupstr("");
+    if(!g->game_modes)g->game_modes=dupstr("");
+    if(!g->regions)g->regions=dupstr("");
+    if(!g->path_cover_small)g->path_cover_small=dupstr("");
+    if(!g->path_cover_large)g->path_cover_large=dupstr("");
+    if(!g->name||!g->fs_name||!g->platform_display_name||!g->summary||!g->genres||!g->developers||!g->publishers||!g->game_modes||!g->regions||!g->path_cover_small||!g->path_cover_large){romm_game_free(g);return ROMM_ERR_MEMORY;}
     return ROMM_OK;
 }
 

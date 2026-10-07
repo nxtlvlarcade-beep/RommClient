@@ -6,7 +6,7 @@
 
 static void usage(const char*x){
     fprintf(stderr,
-      "libromm CLI 0.4\n\n"
+      "libromm CLI 0.5\n\n"
       "Usage:\n"
       "  %s BASE_URL TOKEN platforms\n"
       "  %s BASE_URL TOKEN games PLATFORM_ID [LIMIT] [OFFSET]\n"
@@ -68,6 +68,15 @@ int main(int ac,char**av){
             putchar('\n');
             printf("Name:     %s\n",g.name);
             printf("File:     %s\n",g.fs_name);
+            printf("Size:     %llu bytes\n",g.fs_size_bytes);
+            if(g.genres&&*g.genres)printf("Genres:   %s\n",g.genres);
+            if(g.developers&&*g.developers)printf("Developer:%s%s\n",*g.developers?" ":"",g.developers);
+            if(g.publishers&&*g.publishers)printf("Publisher:%s%s\n",*g.publishers?" ":"",g.publishers);
+            if(g.regions&&*g.regions)printf("Regions:  %s\n",g.regions);
+            if(g.average_rating>0.0)printf("Rating:   %.1f\n",g.average_rating);
+            printf("Manual:   %s\n",g.has_manual?"yes":"no");
+            printf("Multi:    %s\n",g.has_multiple_files?"yes":"no");
+            if(g.summary&&*g.summary)printf("\nDescription:\n%s\n",g.summary);
             romm_game_free(&g);
         }
     } else if(!strcmp(av[3],"download")&&ac>=6) {

@@ -1,54 +1,41 @@
-# libromm 0.4
+# libromm 0.5
 
-Portable C99 RomM client prototype.
+Portable C99 ROMM client core plus libcurl transport and two frontends.
 
-## New in 0.4
+## New in 0.5
 
-- `games PLATFORM_ID [LIMIT] [OFFSET]`
-- `search PLATFORM_ID TEXT [LIMIT]`
-- typed `romm_game_t` / `romm_game_list_t`
-- paginated `/api/roms` support
-- correct RomM platform filter: `platform_ids` (plural)
-- client-side case-insensitive search, deliberately avoiding version-specific
-  server search parameters
-- still builds portable `libromm.a` separately from `libromm-curl.a`
+- `romm_game_t` detail metadata: summary, genres, developers, publishers, modes,
+  regions, file size, release timestamp, rating, manual/multi-file flags and cover paths.
+- `romm-cli info ROM_ID` prints the game description and metadata.
+- `romm-tui`: ANSI/POSIX interactive two-column frontend.
+  - Up/Down: selection
+  - Enter on platform: open games
+  - Enter on game: download using original ROM filename
+  - Enter again when downloaded: launch via `ROMM_LAUNCHER`
+  - Esc: games -> platforms
+  - Q: quit
+- Games are fetched in pages of 100 rather than loading a whole platform at once.
+
+The TUI is deliberately outside `libromm`: the core remains GUI/terminal independent
+for future AmigaOS 3.x, MorphOS and other frontends.
 
 ## Build
 
-    make
+    make clean && make
 
-## Examples
+## CLI
 
-    export ROM_TOKEN='...'
-    ./romm-cli https://romm.example "$ROM_TOKEN" platforms
-    ./romm-cli https://romm.example "$ROM_TOKEN" games 21
-    ./romm-cli https://romm.example "$ROM_TOKEN" games 21 50 0
-    ./romm-cli https://romm.example "$ROM_TOKEN" search 21 Turrican
-    ./romm-cli https://romm.example "$ROM_TOKEN" search 21 "Monkey Island" 20
+    ./romm-cli BASE_URL TOKEN info 81444
 
-Platform 21 was the Amiga platform in the test server supplied during development.
+## TUI
 
-## Architecture
+    ./romm-tui BASE_URL TOKEN
 
-`libromm.a` remains independent of libcurl. `libromm-curl.a` is only one
-transport implementation. This is intentional for later AmigaOS 3.x,
-MorphOS and other ports.
+Optional launcher example on Linux:
 
-The ROM list parser accepts both a direct JSON array and paginated object
-responses with an `items` (or fallback `roms`) array.
+    export ROMM_LAUNCHER=/usr/bin/xdg-open
+    ./romm-tui BASE_URL TOKEN
 
-## Next
-
-0.4 should add ROM detail, discover/verify the content-download endpoint from
-the target server's OpenAPI spec, then implement download-by-ROM-ID with
-progress callbacks.
-
-
-## ROM details and download (0.4)
-
-```sh
-./romm-cli BASE_URL TOKEN info 81444
-./romm-cli BASE_URL TOKEN download 81444 ./Turrican
-```
-
-`info` uses `GET /api/roms/{id}`. `download` first resolves the ROM's `fs_name`, percent-encodes it as a URL path segment, then streams `GET /api/roms/{id}/content/{file_name}` directly to the destination through the transport backend. The file is not buffered in RAM.
+For an emulator, point `ROMM_LAUNCHER` at a wrapper executable/script that accepts the
+downloaded ROM path as its first argument. This launcher hook is frontend-specific and
+will later be replaced by an Amiga/MorphOS launcher backend.

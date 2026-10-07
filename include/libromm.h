@@ -28,6 +28,19 @@ typedef struct {
     char *name;
     char *fs_name;
     char *platform_display_name;
+    char *summary;
+    char *genres;
+    char *developers;
+    char *publishers;
+    char *game_modes;
+    char *regions;
+    char *path_cover_small;
+    char *path_cover_large;
+    unsigned long long fs_size_bytes;
+    long long first_release_date;
+    double average_rating;
+    int has_manual;
+    int has_multiple_files;
 } romm_game_t;
 
 typedef struct {
