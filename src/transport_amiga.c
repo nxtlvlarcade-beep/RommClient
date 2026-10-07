@@ -29,7 +29,52 @@ static int parse_http(const char *url, au_t *u) {
     return 0;
 }
 static int open_sock(void){ if(SocketBase)return 0; SocketBase=OpenLibrary("bsdsocket.library",4); return SocketBase?0:-1; }
-static int connect_host(const au_t*u){ struct hostent*h; struct sockaddr_in a; int s;if(open_sock())return -1;h=gethostbyname((char*)u->host);if(!h||!h->h_addr||h->h_length<=0||(size_t)h->h_length>sizeof(a.sin_addr))return -1;s=socket(AF_INET,SOCK_STREAM,0);if(s<0)return -1;memset(&a,0,sizeof(a));a.sin_family=AF_INET;a.sin_port=htons(u->port);memcpy(&a.sin_addr,h->h_addr,(size_t)h->h_length);if(connect(s,(struct sockaddr*)&a,sizeof(a))<0){CloseSocket(s);return -1;}return s; }
+static int connect_host(const au_t *u)
+{
+    struct hostent *h;
+    struct sockaddr_in a;
+    int s;
+
+    printf("[NET D01] open bsdsocket.library\n"); fflush(stdout);
+    if (open_sock()) {
+        printf("[NET D02] OpenLibrary FAILED\n"); fflush(stdout);
+        return -1;
+    }
+    printf("[NET D02] SocketBase=%p\n", (void *)SocketBase); fflush(stdout);
+
+    printf("[NET D03] gethostbyname(%s)\n", u->host); fflush(stdout);
+    h = gethostbyname((char *)u->host);
+    printf("[NET D04] gethostbyname -> %p\n", (void *)h); fflush(stdout);
+    if (!h) return -1;
+
+    printf("[NET D05] h_addr=%p h_length=%d addrtype=%d\n",
+           (void *)h->h_addr, (int)h->h_length, (int)h->h_addrtype); fflush(stdout);
+    if (!h->h_addr || h->h_length <= 0 ||
+        (size_t)h->h_length > sizeof(a.sin_addr)) return -1;
+
+    printf("[NET D06] socket(AF_INET,SOCK_STREAM,0)\n"); fflush(stdout);
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    printf("[NET D07] socket -> %d\n", s); fflush(stdout);
+    if (s < 0) return -1;
+
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    printf("[NET D08] htons(%u)\n", (unsigned)u->port); fflush(stdout);
+    a.sin_port = htons(u->port);
+
+    printf("[NET D09] memcpy address (%d bytes)\n", (int)h->h_length); fflush(stdout);
+    memcpy(&a.sin_addr, h->h_addr, (size_t)h->h_length);
+
+    printf("[NET D10] connect fd=%d sockaddr_size=%lu\n",
+           s, (unsigned long)sizeof(a)); fflush(stdout);
+    if (connect(s, (struct sockaddr *)&a, sizeof(a)) < 0) {
+        printf("[NET D11] connect FAILED\n"); fflush(stdout);
+        CloseSocket(s);
+        return -1;
+    }
+    printf("[NET D11] CONNECTED\n"); fflush(stdout);
+    return s;
+}
 static int send_all(int s,const char*b,size_t n){while(n){int want=n>32767U?32767:(int)n;int k=send(s,(char*)b,want,0);if(k<=0)return -1;b+=k;n-=(size_t)k;}return 0;}
 static char *header_end(char*b,size_t n){size_t i;for(i=3;i<n;i++)if(b[i-3]=='\r'&&b[i-2]=='\n'&&b[i-1]=='\r'&&b[i]=='\n')return b+i+1;return NULL;}
 static long status_code(const char*b){long x=0;if(sscanf(b,"HTTP/%*s %ld",&x)!=1)return 0;return x;}

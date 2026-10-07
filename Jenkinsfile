@@ -1,6 +1,9 @@
 pipeline {
-    agent {
-        label 'libromm'
+    agent { label 'libromm' }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
     }
 
     environment {
@@ -12,26 +15,10 @@ pipeline {
             steps {
                 sh '''
                     set -eux
-
                     gcc --version
                     make --version
-
-                    which m68k-amigaos-gcc
                     m68k-amigaos-gcc --version
-
-                    which m68k-amigaos-ar
-                    which m68k-amigaos-objdump
-                '''
-            }
-        }
-
-        stage('Clean') {
-            steps {
-                sh '''
-                    set -eux
-
-                    make clean || true
-                    make -f Makefile.amiga clean || true
+                    m68k-amigaos-ar --version
                 '''
             }
         }
@@ -40,16 +27,21 @@ pipeline {
             steps {
                 sh '''
                     set -eux
-
+                    make clean
                     make all
+                '''
+            }
+        }
 
+        stage('Verify Linux') {
+            steps {
+                sh '''
+                    set -eux
                     test -f libromm.a
                     test -f libromm-curl.a
                     test -x romm-cli
                     test -x romm-tui
-
-                    file romm-cli
-                    file romm-tui
+                    file libromm.a libromm-curl.a romm-cli romm-tui
                 '''
             }
         }
@@ -58,11 +50,17 @@ pipeline {
             steps {
                 sh '''
                     set -eux
-
+                    make -f Makefile.amiga clean
                     make -f Makefile.amiga all
+                '''
+            }
+        }
 
+        stage('Verify AmigaOS 68k') {
+            steps {
+                sh '''
+                    set -eux
                     test -f romm-amiga
-
                     file romm-amiga
                     m68k-amigaos-objdump -f romm-amiga
                 '''
@@ -73,19 +71,7 @@ pipeline {
             steps {
                 sh '''
                     set -eux
-
-                    echo "=== Linux ==="
-                    ls -lh \
-                        libromm.a \
-                        libromm-curl.a \
-                        romm-cli \
-                        romm-tui
-
-                    echo "=== AmigaOS ==="
-                    ls -lh romm-amiga
-
-                    echo "=== Headers ==="
-                    ls -lh include/
+                    ls -lh libromm.a libromm-curl.a romm-cli romm-tui romm-amiga include/*.h
                 '''
             }
         }
@@ -93,14 +79,7 @@ pipeline {
 
     post {
         success {
-            archiveArtifacts(
-                artifacts: 'libromm.a,libromm-curl.a,romm-cli,romm-tui,romm-amiga,include/*.h',
-                fingerprint: true
-            )
-        }
-
-        always {
-            echo 'libromm build finished'
+            archiveArtifacts artifacts: 'libromm.a,libromm-curl.a,romm-cli,romm-tui,romm-amiga,include/*.h', fingerprint: true
         }
     }
 }

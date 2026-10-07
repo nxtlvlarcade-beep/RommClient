@@ -1,36 +1,25 @@
-CC = m68k-amigaos-gcc
-AR = m68k-amigaos-ar
-
-CFLAGS = -g -O0 -Wall -Wextra -std=c99 -m68020
-CPPFLAGS = -Iinclude
-
-OBJS = \
-	src/libromm.amiga.o \
-	src/minijson.amiga.o \
-	src/transport_amiga.amiga.o \
-	examples/romm_amiga.amiga.o
-
-.PHONY: all clean
+CROSS ?= m68k-amigaos-
+CC := $(CROSS)gcc
+AR := $(CROSS)ar
+CFLAGS ?= -g3 -O0 -fno-omit-frame-pointer -Wall -Wextra -std=c99 -m68020
+CPPFLAGS += -Iinclude -Isrc
+CORE_OBJ = build-amiga/libromm.o build-amiga/minijson.o
+AMIGA_OBJ = build-amiga/transport_amiga.o build-amiga/romm_amiga.o
 
 all: romm-amiga
 
-romm-amiga: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
-
-src/libromm.amiga.o: src/libromm.c
+build-amiga:
+	mkdir -p $@
+build-amiga/libromm.o: src/libromm.c | build-amiga
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
-src/minijson.amiga.o: src/minijson.c
+build-amiga/minijson.o: src/minijson.c | build-amiga
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
-src/transport_amiga.amiga.o: src/transport_amiga.c
+build-amiga/transport_amiga.o: src/transport_amiga.c | build-amiga
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
-examples/romm_amiga.amiga.o: examples/romm_amiga.c
+build-amiga/romm_amiga.o: examples/romm_amiga.c | build-amiga
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-
+romm-amiga: $(CORE_OBJ) $(AMIGA_OBJ)
+	$(CC) $(CFLAGS) -Wl,-Map,romm-amiga.map -o $@ $(CORE_OBJ) $(AMIGA_OBJ)
 clean:
-	rm -f \
-		src/*.amiga.o \
-		examples/*.amiga.o \
-		romm-amiga
+	rm -rf build-amiga romm-amiga romm-amiga.map
+.PHONY: all clean
