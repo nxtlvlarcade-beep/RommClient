@@ -1,12 +1,17 @@
 #include "libromm_amiga.h"
+
 #include <exec/types.h>
 #include <exec/libraries.h>
-#include <proto/exec.h>
-#include <proto/bsdsocket.h>
-#include <netdb.h>
+
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <arpa/inet.h>
+
+#include <proto/exec.h>
+#include <proto/bsdsocket.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
