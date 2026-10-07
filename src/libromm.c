@@ -18,7 +18,7 @@ static int pobj(const char*j,mj_token_t*t,int obj,int nt,romm_platform_t*p){int 
 int romm_platforms(romm_client_t*c,romm_platform_list_t*out){char*j=NULL;mj_token_t*t=NULL;int nt,cap=4096,rc,i;size_t n=0;if(!c||!out)return ROMM_ERR_ARGUMENT;memset(out,0,sizeof(*out));rc=romm_get_json(c,"/api/platforms",&j);if(rc)return rc;for(;;){t=calloc(cap,sizeof(*t));if(!t){free(j);return ROMM_ERR_MEMORY;}nt=mj_parse(j,t,cap);if(nt!=-1)break;free(t);t=NULL;cap*=2;if(cap>262144){free(j);return ROMM_ERR_PARSE;}}if(nt<1||t[0].type!=MJ_ARRAY){free(t);free(j);return ROMM_ERR_PARSE;}for(i=1;i<nt;i=mj_skip(t,i,nt))if(t[i].parent==0&&t[i].type==MJ_OBJECT)n++;out->items=calloc(n,sizeof(*out->items));if(n&&!out->items){free(t);free(j);return ROMM_ERR_MEMORY;}for(i=1;i<nt;i=mj_skip(t,i,nt))if(t[i].parent==0&&t[i].type==MJ_OBJECT){rc=pobj(j,t,i,nt,&out->items[out->count]);if(rc){romm_platform_list_free(out);free(t);free(j);return rc;}out->count++;}free(t);free(j);return 0;}
 void romm_platform_list_free(romm_platform_list_t*l){size_t i;if(!l)return;for(i=0;i<l->count;i++)pfree(&l->items[i]);free(l->items);memset(l,0,sizeof(*l));}
 
-static void game_free(romm_game_t *g) {
+void romm_game_free(romm_game_t *g) {
     if(!g)return;
     free(g->name); free(g->fs_name); free(g->platform_display_name);
     memset(g,0,sizeof(*g));
@@ -42,7 +42,7 @@ static int game_obj(const char*j,mj_token_t*t,int obj,int nt,romm_game_t*g) {
     if(!g->name)g->name=dupstr("");
     if(!g->fs_name)g->fs_name=dupstr("");
     if(!g->platform_display_name)g->platform_display_name=dupstr("");
-    if(!g->name||!g->fs_name||!g->platform_display_name){game_free(g);return ROMM_ERR_MEMORY;}
+    if(!g->name||!g->fs_name||!g->platform_display_name){romm_game_free(g);return ROMM_ERR_MEMORY;}
     return ROMM_OK;
 }
 
@@ -155,10 +155,73 @@ int romm_search_games(romm_client_t*c,long platform_id,const char*text,
 
 void romm_game_list_free(romm_game_list_t*l) {
     size_t i; if(!l)return;
-    for(i=0;i<l->count;i++)game_free(&l->items[i]);
+    for(i=0;i<l->count;i++)romm_game_free(&l->items[i]);
     free(l->items); memset(l,0,sizeof(*l));
 }
 
+
+static int parse_game_json(const char *j, romm_game_t *out) {
+    mj_token_t *t=NULL; int nt,cap=2048,rc;
+    if(!j||!out)return ROMM_ERR_ARGUMENT;
+    memset(out,0,sizeof(*out));
+    for(;;) {
+        t=calloc((size_t)cap,sizeof(*t));
+        if(!t)return ROMM_ERR_MEMORY;
+        nt=mj_parse(j,t,cap);
+        if(nt!=-1)break;
+        free(t); t=NULL; cap*=2;
+        if(cap>262144)return ROMM_ERR_PARSE;
+    }
+    if(nt<1||t[0].type!=MJ_OBJECT){free(t);return ROMM_ERR_PARSE;}
+    rc=game_obj(j,t,0,nt,out);
+    free(t);
+    return rc;
+}
+
+int romm_game_info(romm_client_t *c,long rom_id,romm_game_t *out) {
+    char path[96],*j=NULL; int rc;
+    if(!c||!out||rom_id<=0)return ROMM_ERR_ARGUMENT;
+    snprintf(path,sizeof(path),"/api/roms/%ld",rom_id);
+    rc=romm_get_json(c,path,&j);
+    if(rc)return rc;
+    rc=parse_game_json(j,out);
+    free(j);
+    return rc;
+}
+
+static int is_unreserved(unsigned char c) {
+    return (c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||
+           c=='-'||c=='_'||c=='.'||c=='~';
+}
+
+static char *urlencode_segment(const char *s) {
+    static const char hex[]="0123456789ABCDEF";
+    size_t n=0,i; char *o,*p;
+    if(!s)return NULL;
+    for(i=0;s[i];i++)n+=is_unreserved((unsigned char)s[i])?1:3;
+    o=malloc(n+1); if(!o)return NULL; p=o;
+    for(i=0;s[i];i++) {
+        unsigned char c=(unsigned char)s[i];
+        if(is_unreserved(c))*p++=(char)c;
+        else {*p++='%';*p++=hex[c>>4];*p++=hex[c&15];}
+    }
+    *p=0; return o;
+}
+
+int romm_download_rom(romm_client_t *c,long rom_id,const char *destination) {
+    romm_game_t g; char *enc=NULL,*path=NULL; size_t n; int rc;
+    if(!c||rom_id<=0||!destination||!*destination)return ROMM_ERR_ARGUMENT;
+    rc=romm_game_info(c,rom_id,&g); if(rc)return rc;
+    if(!g.fs_name||!*g.fs_name){romm_game_free(&g);return ROMM_ERR_PARSE;}
+    enc=urlencode_segment(g.fs_name);
+    if(!enc){romm_game_free(&g);return ROMM_ERR_MEMORY;}
+    n=strlen(enc)+64; path=malloc(n);
+    if(!path){free(enc);romm_game_free(&g);return ROMM_ERR_MEMORY;}
+    snprintf(path,n,"/api/roms/%ld/content/%s",rom_id,enc);
+    rc=romm_download_file(c,path,destination);
+    free(path); free(enc); romm_game_free(&g);
+    return rc;
+}
 
 int romm_download_file(romm_client_t*c,const char*p,const char*d){char*u,*a;int rc;if(!c||!p||!d||!c->transport.download)return ROMM_ERR_ARGUMENT;u=urljoin(c->base_url,p);a=auth(c);if(!u){free(a);return ROMM_ERR_MEMORY;}rc=c->transport.download(c->transport.userdata,u,a,d);free(u);free(a);return rc;}
 const char*romm_strerror(int e){switch(e){case 0:return"OK";case -1:return"invalid argument";case -2:return"transport error";case -3:return"HTTP error";case -4:return"out of memory";case -5:return"JSON parse error";case -6:return"I/O error";default:return"unknown error";}}

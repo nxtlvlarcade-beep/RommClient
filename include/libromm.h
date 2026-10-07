@@ -42,6 +42,11 @@ int romm_search_games(romm_client_t *client, long platform_id,
                       const char *text, size_t limit, romm_game_list_t *out);
 void romm_game_list_free(romm_game_list_t *list);
 
+int romm_game_info(romm_client_t *client, long rom_id, romm_game_t *out);
+void romm_game_free(romm_game_t *game);
+int romm_download_rom(romm_client_t *client, long rom_id,
+                      const char *destination);
+
 int romm_download_file(romm_client_t*,const char*,const char*);
 const char *romm_strerror(int);
 #endif

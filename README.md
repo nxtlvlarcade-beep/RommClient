@@ -1,8 +1,8 @@
-# libromm 0.3
+# libromm 0.4
 
 Portable C99 RomM client prototype.
 
-## New in 0.3
+## New in 0.4
 
 - `games PLATFORM_ID [LIMIT] [OFFSET]`
 - `search PLATFORM_ID TEXT [LIMIT]`
@@ -42,3 +42,13 @@ responses with an `items` (or fallback `roms`) array.
 0.4 should add ROM detail, discover/verify the content-download endpoint from
 the target server's OpenAPI spec, then implement download-by-ROM-ID with
 progress callbacks.
+
+
+## ROM details and download (0.4)
+
+```sh
+./romm-cli BASE_URL TOKEN info 81444
+./romm-cli BASE_URL TOKEN download 81444 ./Turrican
+```
+
+`info` uses `GET /api/roms/{id}`. `download` first resolves the ROM's `fs_name`, percent-encodes it as a URL path segment, then streams `GET /api/roms/{id}/content/{file_name}` directly to the destination through the transport backend. The file is not buffered in RAM.

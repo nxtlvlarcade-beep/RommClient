@@ -6,13 +6,15 @@
 
 static void usage(const char*x){
     fprintf(stderr,
-      "libromm CLI 0.3\n\n"
+      "libromm CLI 0.4\n\n"
       "Usage:\n"
       "  %s BASE_URL TOKEN platforms\n"
       "  %s BASE_URL TOKEN games PLATFORM_ID [LIMIT] [OFFSET]\n"
       "  %s BASE_URL TOKEN search PLATFORM_ID TEXT [LIMIT]\n"
+      "  %s BASE_URL TOKEN info ROM_ID\n"
+      "  %s BASE_URL TOKEN download ROM_ID DESTINATION\n"
       "  %s BASE_URL TOKEN raw API_PATH\n"
-      "  %s BASE_URL TOKEN get DOWNLOAD_PATH DESTINATION\n",x,x,x,x,x);
+      "  %s BASE_URL TOKEN get DOWNLOAD_PATH DESTINATION\n",x,x,x,x,x,x,x);
 }
 static void print_games(const romm_game_list_t*l){
     size_t i;
@@ -56,6 +58,22 @@ int main(int ac,char**av){
         size_t limit=ac>=7?(size_t)strtoul(av[6],NULL,10):50;
         rc=romm_search_games(&c,pid,av[5],limit,&l);
         if(!rc){print_games(&l);romm_game_list_free(&l);}
+    } else if(!strcmp(av[3],"info")&&ac>=5) {
+        romm_game_t g; long id=strtol(av[4],NULL,10);
+        rc=romm_game_info(&c,id,&g);
+        if(!rc){
+            printf("ROM-ID:   %ld\n",g.id);
+            printf("Platform: %ld",g.platform_id);
+            if(g.platform_display_name&&*g.platform_display_name)printf(" (%s)",g.platform_display_name);
+            putchar('\n');
+            printf("Name:     %s\n",g.name);
+            printf("File:     %s\n",g.fs_name);
+            romm_game_free(&g);
+        }
+    } else if(!strcmp(av[3],"download")&&ac>=6) {
+        long id=strtol(av[4],NULL,10);
+        rc=romm_download_rom(&c,id,av[5]);
+        if(!rc)printf("Downloaded ROM %ld to %s\n",id,av[5]);
     } else if(!strcmp(av[3],"raw")&&ac>=5) {
         char*j=NULL;rc=romm_get_json(&c,av[4],&j);if(!rc){puts(j);free(j);}
     } else if(!strcmp(av[3],"get")&&ac>=6) {
