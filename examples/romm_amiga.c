@@ -43,11 +43,34 @@ static void cls(void){printf("\2332J\233H");fflush(stdout);}
 static void marker(int selected){if(selected) printf("\273 "); else printf("  ");}
 static void cut(const char*s,int n){int i=0;if(!s)s="";while(*s&&i<n){char c=*s++;if(c=='\r'||c=='\n')c=' ';putchar(c);i++;}}
 
+
+static void wrap_text(const char *s,int width)
+{
+    int col=0,word=0; const char *p,*q;
+    if(!s||!*s){puts("(no description)");return;}
+    p=s;
+    while(*p){
+        while(*p==' '||*p=='\t'||*p=='\r'||*p=='\n') p++;
+        if(!*p) break;
+        q=p; word=0; while(q[word]&&q[word]!=' '&&q[word]!='\t'&&q[word]!='\r'&&q[word]!='\n') word++;
+        if(col && col+1+word>width){putchar('\n');col=0;}
+        if(col){putchar(' ');col++;}
+        while(word>0){
+            int room=width-col, take=word<room?word:room, i;
+            if(room<=0){putchar('\n');col=0;continue;}
+            for(i=0;i<take;i++) putchar(*p++);
+            col+=take; word-=take;
+            if(word){putchar('\n');col=0;}
+        }
+    }
+    if(col) putchar('\n');
+}
+
 static void drawp(const romm_platform_list_t*p,size_t s,size_t top)
 {
     size_t i,end=top+PLATFORM_ROWS;
     if(end>p->count) end=p->count;
-    cls(); puts("ROMM Amiga 0.8.2 - Platforms\n");
+    cls(); puts("ROMM Amiga 0.8.3 - Platforms\n");
     if(top) puts("  ^ more");
     for(i=top;i<end;i++) {
         marker(i==s);
@@ -61,13 +84,13 @@ static void drawg(const romm_game_list_t*g,size_t s,size_t top,const romm_game_t
 {
     size_t i,end=top+GAME_ROWS;
     if(end>g->count) end=g->count;
-    cls();printf("ROMM Amiga 0.8.2 - Games (%ld total, %lu-%lu)\n\n",total,
+    cls();printf("ROMM Amiga 0.8.3 - Games (%ld total, %lu-%lu)\n\n",total,
         (unsigned long)(off+1),(unsigned long)(off+g->count));
     if(off || top) puts("  ^ more");
     for(i=top;i<end;i++) { marker(i==s); printf("%-35.35s\n",g->items[i].name?g->items[i].name:""); }
     if(off+g->count<(size_t)total || end<g->count) puts("  v more");
     puts("\n----------------------------------------");
-    if(d&&d->name){printf("Name: ");cut(d->name,60);printf("\nFile: ");cut(d->fs_name,60);printf("\nPlatform: ");cut(d->platform_display_name,50);printf("\nDescription: ");cut(d->summary,300);puts("");}
+    if(d&&d->name){printf("Name: ");cut(d->name,60);printf("\nFile: ");cut(d->fs_name,60);printf("\nPlatform: ");cut(d->platform_display_name,50);printf("\nDescription:\n");wrap_text(d->summary,72);}
     puts("\nReturn: download   Esc/B: back   Q: quit");
 }
 
@@ -80,8 +103,10 @@ static int load_info(romm_client_t *c,romm_game_list_t *g,size_t gs,romm_game_t 
 int main(int ac,char**av)
 {
     romm_client_t c; romm_platform_list_t p={0}; romm_game_list_t g={0}; romm_game_t d={0};
-    romm_transport_t t; view_t v=V_PLATFORMS; size_t ps=0,ptop=0,gs=0,gtop=0,off=0; long pid=0; int k,rc=0,raw=0;
-    if(ac!=3){printf("Usage: %s http://PROXY:PORT TOKEN\n",av[0]);return 2;}
+    romm_transport_t t; view_t v=V_PLATFORMS; size_t ps=0,ptop=0,gs=0,gtop=0,off=0; long pid=0; int k,rc=0,raw=0,debug=0;
+    if(ac==4 && !strcmp(av[3],"--debug")) debug=1;
+    else if(ac!=3){printf("Usage: %s http://PROXY:PORT TOKEN [--debug]\n",av[0]);return 2;}
+    romm_amiga_set_debug(debug);
     t=romm_amiga_transport();
     rc=romm_client_init(&c,av[1],av[2],t); if(rc){printf("client init: %s\n",romm_strerror(rc));goto shutdown;}
     rc=romm_platforms(&c,&p); if(rc){printf("Platforms: %s\n",romm_strerror(rc));goto done;}

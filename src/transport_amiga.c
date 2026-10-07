@@ -15,6 +15,8 @@ struct Library *SocketBase = NULL;
 
 typedef struct { char host[256]; unsigned short port; char base[512]; } au_t;
 static au_t au;
+static int amiga_debug = 0;
+#define NETDBG(...) do { if(amiga_debug) { printf(__VA_ARGS__); fflush(stdout); } } while(0)
 
 static int parse_http(const char *url, au_t *u) {
     const char *p,*slash,*colon; size_t n;
@@ -44,24 +46,24 @@ static int request_body(const char*url,const char*auth,char**out,size_t*outlen,l
     u=(au_t*)malloc(sizeof(*u));req=(char*)malloc(1536);tmp=(char*)malloc(2048);
     if(!u||!req||!tmp){free(u);free(req);free(tmp);return ROMM_ERR_MEMORY;}
     if(parse_http(url,u)){rc=ROMM_ERR_TRANSPORT;goto done;}
-    printf("[NET] host=%s port=%u path=%s\n",u->host,(unsigned)u->port,u->base[0]?u->base:"/");fflush(stdout);
-    s=connect_host(u);if(s<0){printf("[NET] connect failed\n");fflush(stdout);rc=ROMM_ERR_TRANSPORT;goto done;}
+    NETDBG("[NET] host=%s port=%u path=%s\n",u->host,(unsigned)u->port,u->base[0]?u->base:"/");
+    s=connect_host(u);if(s<0){NETDBG("[NET] connect failed\n");rc=ROMM_ERR_TRANSPORT;goto done;}
     qn=make_request(req,1536,u,auth);if(qn<0){rc=ROMM_ERR_ARGUMENT;goto done;}
-    if(send_all(s,req,(size_t)qn)){rc=ROMM_ERR_TRANSPORT;goto done;}printf("[NET] request sent\n");fflush(stdout);
+    if(send_all(s,req,(size_t)qn)){rc=ROMM_ERR_TRANSPORT;goto done;}NETDBG("[NET] request sent\n");
     for(;;){
         k=recv(s,tmp,2048,0);
         if(k==0)break;
-        if(k<0){rc=ROMM_ERR_TRANSPORT;printf("[NET] recv failed\n");fflush(stdout);break;}
+        if(k<0){rc=ROMM_ERR_TRANSPORT;NETDBG("[NET] recv failed\n");break;}
         if((size_t)k>((size_t)-1)-used-1){rc=ROMM_ERR_MEMORY;break;}
         need=used+(size_t)k+1;if(grow(&b,&cap,need)){rc=ROMM_ERR_MEMORY;break;}
         memcpy(b+used,tmp,(size_t)k);used+=(size_t)k;
-        if(used-last_report>=65536U){printf("[NET] received %lu KB\n",(unsigned long)(used/1024U));fflush(stdout);last_report=used;}
+        if(used-last_report>=65536U){NETDBG("[NET] received %lu KB\n",(unsigned long)(used/1024U));last_report=used;}
     }
     if(rc)goto done;if(!b){rc=ROMM_ERR_TRANSPORT;goto done;}
     b[used]=0;*status=status_code(b);body=header_end(b,used);if(!body){rc=ROMM_ERR_TRANSPORT;goto done;}
     hn=(size_t)(body-b);if(hn>used){rc=ROMM_ERR_TRANSPORT;goto done;}*outlen=used-hn;
     memmove(b,body,*outlen);b[*outlen]=0;*out=b;b=NULL;
-    printf("[NET] body=%lu bytes status=%ld\n",(unsigned long)*outlen,*status);fflush(stdout);
+    NETDBG("[NET] body=%lu bytes status=%ld\n",(unsigned long)*outlen,*status);
 done:
     if(s>=0)CloseSocket(s);free(u);free(req);free(tmp);free(b);return rc;
 }
@@ -74,7 +76,7 @@ static int download_stream(const char*url,const char*auth,const char*dest){
     u=(au_t*)malloc(sizeof(*u));req=(char*)malloc(1536);tmp=(char*)malloc(8192);head=(char*)malloc(8192);
     if(!u||!req||!tmp||!head){rc=ROMM_ERR_MEMORY;goto done;}
     if(parse_http(url,u)){rc=ROMM_ERR_ARGUMENT;goto done;}
-    printf("[NET] download host=%s path=%s\n",u->host,u->base[0]?u->base:"/");fflush(stdout);
+    NETDBG("[NET] download host=%s path=%s\n",u->host,u->base[0]?u->base:"/");
     s=connect_host(u);if(s<0){rc=ROMM_ERR_TRANSPORT;goto done;}
     qn=make_request(req,1536,u,auth);if(qn<0){rc=ROMM_ERR_ARGUMENT;goto done;}
     if(send_all(s,req,(size_t)qn)){rc=ROMM_ERR_TRANSPORT;goto done;}
@@ -86,7 +88,7 @@ static int download_stream(const char*url,const char*auth,const char*dest){
     while((k=recv(s,tmp,8192,0))>0){if(fwrite(tmp,1,(size_t)k,f)!=(size_t)k){rc=ROMM_ERR_IO;goto fail_file;}total+=(unsigned long)k;}
     if(k<0){rc=ROMM_ERR_TRANSPORT;goto fail_file;}
     if(fclose(f)!=0){f=NULL;remove(dest);rc=ROMM_ERR_IO;goto done;}f=NULL;
-    printf("[NET] downloaded=%lu bytes\n",total);fflush(stdout);goto done;
+    NETDBG("[NET] downloaded=%lu bytes\n",total);goto done;
 fail_file:
     if(f){fclose(f);f=NULL;}remove(dest);
 done:
@@ -97,3 +99,5 @@ static int adownload(void*ud,const char*url,const char*auth,const char*dest){(vo
 static void afree(void*ud,romm_http_response_t*r){(void)ud;if(r){free(r->body);memset(r,0,sizeof(*r));}}
 romm_transport_t romm_amiga_transport(void){romm_transport_t t;t.get=aget;t.download=adownload;t.free_response=afree;t.userdata=&au;return t;}
 void romm_amiga_transport_shutdown(void){if(SocketBase){CloseLibrary(SocketBase);SocketBase=NULL;}}
+
+void romm_amiga_set_debug(int enabled){amiga_debug=enabled?1:0;}

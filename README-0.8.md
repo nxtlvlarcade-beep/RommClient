@@ -1,16 +1,16 @@
-# libromm 0.8.2 - Amiga interactive client
+# libromm 0.8.3
 
-0.8.2 keeps the existing Amiga client functions and makes the already present
-platform/game/detail/download flow usable as a persistent interactive client.
+Amiga console client improvements:
 
-Amiga controls:
-- Up/Down: select
-- Return on platform: open games
-- Return on game: download selected ROM
-- Esc: back to platforms
-- Q: quit
+- interactive scrolling platform/game browser from 0.8.2
+- game detail screen is redrawn cleanly
+- descriptions are word-wrapped to 72 columns
+- transport debug output is hidden by default
+- add `--debug` as optional fourth argument to show `[NET]` diagnostics
+- Amiga network buffers remain heap allocated to keep classic AmigaDOS stack usage low
 
-Important fix in 0.8.2:
-The large receive/download buffers are allocated on the heap instead of the
-small classic AmigaDOS process stack. A manual `Stack 65536` should therefore
-no longer be required just for these buffers.
+Normal:
+`romm-amiga http://PROXY:PORT TOKEN`
+
+Debug:
+`romm-amiga http://PROXY:PORT TOKEN --debug`
