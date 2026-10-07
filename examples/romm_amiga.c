@@ -8,7 +8,7 @@
 typedef enum { V_PLATFORMS,V_GAMES } view_t;
 #define PAGE_GAMES 50
 #define PLATFORM_ROWS 18
-#define GAME_ROWS 15
+#define GAME_ROWS 11
 #define KEY_UP 1001
 #define KEY_DOWN 1002
 
@@ -44,33 +44,35 @@ static void marker(int selected){if(selected) printf("\273 "); else printf("  ")
 static void cut(const char*s,int n){int i=0;if(!s)s="";while(*s&&i<n){char c=*s++;if(c=='\r'||c=='\n')c=' ';putchar(c);i++;}}
 
 
-static void wrap_text(const char *s,int width)
+/* Keep the description inside the console viewport; never scroll the header away. */
+static void wrap_text(const char *s,int width,int maxlines)
 {
-    int col=0,word=0; const char *p,*q;
+    int col=0,lines=0; const char *p,*q;
     if(!s||!*s){puts("(no description)");return;}
     p=s;
-    while(*p){
-        while(*p==' '||*p=='\t'||*p=='\r'||*p=='\n') p++;
-        if(!*p) break;
-        q=p; word=0; while(q[word]&&q[word]!=' '&&q[word]!='\t'&&q[word]!='\r'&&q[word]!='\n') word++;
-        if(col && col+1+word>width){putchar('\n');col=0;}
+    while(*p && lines<maxlines){
+        int word, i;
+        while(*p==' '||*p=='\t'||*p=='\r'||*p=='\n')p++;
+        if(!*p)break;
+        q=p;word=0;
+        while(q[word]&&q[word]!=' '&&q[word]!='\t'&&q[word]!='\r'&&q[word]!='\n')word++;
+        if(col && col+1+word>width){putchar('\n');lines++;col=0;}
+        if(lines>=maxlines)break;
         if(col){putchar(' ');col++;}
-        while(word>0){
-            int room=width-col, take=word<room?word:room, i;
-            if(room<=0){putchar('\n');col=0;continue;}
-            for(i=0;i<take;i++) putchar(*p++);
-            col+=take; word-=take;
-            if(word){putchar('\n');col=0;}
+        for(i=0;i<word && lines<maxlines;i++){
+            if(col>=width){putchar('\n');lines++;col=0;}
+            if(lines<maxlines){putchar(*p++);col++;}
         }
     }
-    if(col) putchar('\n');
+    if(lines<maxlines && col)putchar('\n');
+    if(*p)puts("... (description truncated)");
 }
 
 static void drawp(const romm_platform_list_t*p,size_t s,size_t top)
 {
     size_t i,end=top+PLATFORM_ROWS;
     if(end>p->count) end=p->count;
-    cls(); puts("ROMM Amiga 0.8.3 - Platforms\n");
+    cls(); puts("ROMM Amiga 0.8.4 - Platforms\n");
     if(top) puts("  ^ more");
     for(i=top;i<end;i++) {
         marker(i==s);
@@ -83,15 +85,27 @@ static void drawp(const romm_platform_list_t*p,size_t s,size_t top)
 static void drawg(const romm_game_list_t*g,size_t s,size_t top,const romm_game_t*d,long total,size_t off)
 {
     size_t i,end=top+GAME_ROWS;
-    if(end>g->count) end=g->count;
-    cls();printf("ROMM Amiga 0.8.3 - Games (%ld total, %lu-%lu)\n\n",total,
+    if(end>g->count)end=g->count;
+    cls();
+    printf("ROMM Amiga 0.8.4 - Games\n");
+    printf("Game %lu / %ld  (loaded %lu-%lu)\n",(unsigned long)(off+s+1),total,
         (unsigned long)(off+1),(unsigned long)(off+g->count));
-    if(off || top) puts("  ^ more");
-    for(i=top;i<end;i++) { marker(i==s); printf("%-35.35s\n",g->items[i].name?g->items[i].name:""); }
-    if(off+g->count<(size_t)total || end<g->count) puts("  v more");
-    puts("\n----------------------------------------");
-    if(d&&d->name){printf("Name: ");cut(d->name,60);printf("\nFile: ");cut(d->fs_name,60);printf("\nPlatform: ");cut(d->platform_display_name,50);printf("\nDescription:\n");wrap_text(d->summary,72);}
-    puts("\nReturn: download   Esc/B: back   Q: quit");
+    for(i=top;i<end;i++){
+        marker(i==s);
+        printf("%-35.35s\n",g->items[i].name?g->items[i].name:"");
+    }
+    /* Reserve fixed screen rows for the list, even on the final page. */
+    for(i=end-top;i<GAME_ROWS;i++)putchar('\n');
+    printf("%s  %s\n",(off||top)?"^ more":"      ",
+        (off+g->count<(size_t)total||end<g->count)?"v more":"      ");
+    puts("----------------------------------------");
+    if(d&&d->name){
+        printf("Name: ");cut(d->name,48);putchar('\n');
+        printf("File: ");cut(d->fs_name,48);putchar('\n');
+        printf("Platform: ");cut(d->platform_display_name,40);putchar('\n');
+        printf("Description: ");wrap_text(d->summary,60,3);
+    }
+    puts("Return: download   Esc/B: back   Q: quit");
 }
 
 static int load_info(romm_client_t *c,romm_game_list_t *g,size_t gs,romm_game_t *d)
