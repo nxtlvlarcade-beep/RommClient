@@ -6,46 +6,124 @@
 #include <string.h>
 
 typedef enum { V_PLATFORMS,V_GAMES } view_t;
-#define TRACE(s) do { printf("[ROMM] %s\n",(s)); fflush(stdout); } while(0)
+#define PAGE_GAMES 50
+#define PLATFORM_ROWS 18
+#define GAME_ROWS 15
+#define KEY_UP 1001
+#define KEY_DOWN 1002
 
-static int getkey(void){UBYTE c=0;if(Read(Input(),&c,1)!=1)return -1;if(c==0x9b){if(Read(Input(),&c,1)!=1)return -1;if(c=='A')return 1001;if(c=='B')return 1002;return c;}if(c==27){UBYTE a;if(Read(Input(),&a,1)!=1)return 27;if(a=='['&&Read(Input(),&c,1)==1){if(c=='A')return 1001;if(c=='B')return 1002;}return 27;}if(c=='\r'||c=='\n')return 13;return c;}
-static void cls(void){printf("\033[2J\033[H");}
+static int getkey(void)
+{
+    UBYTE c=0,a=0;
+    if(Read(Input(),&c,1)!=1) return -1;
+    if(c==0x9b) {
+        if(Read(Input(),&c,1)!=1) return -1;
+        if(c=='A') return KEY_UP;
+        if(c=='B') return KEY_DOWN;
+        return c;
+    }
+    if(c==27) {
+        /* Some console handlers use ESC [ A/B, others return ESC alone. */
+        if(WaitForChar(Input(),2000)) {
+            if(Read(Input(),&a,1)==1 && a=='[' && Read(Input(),&c,1)==1) {
+                if(c=='A') return KEY_UP;
+                if(c=='B') return KEY_DOWN;
+            }
+        }
+        return 27;
+    }
+    if(c=='\r'||c=='\n') return 13;
+    if(c=='w'||c=='W'||c=='k'||c=='K') return KEY_UP;
+    if(c=='s'||c=='S'||c=='j'||c=='J') return KEY_DOWN;
+    if(c=='b'||c=='B') return 27;
+    return c;
+}
+
+static void cls(void){printf("\2332J\233H");fflush(stdout);}
+static void marker(int selected){if(selected) printf("\273 "); else printf("  ");}
 static void cut(const char*s,int n){int i=0;if(!s)s="";while(*s&&i<n){char c=*s++;if(c=='\r'||c=='\n')c=' ';putchar(c);i++;}}
-static void drawp(const romm_platform_list_t*p,size_t s){size_t i,from=s>8?s-8:0;cls();puts("ROMM Amiga 0.8.1 - Platforms\n");for(i=from;i<p->count&&i<from+18;i++)printf("%c %-28.28s %6ld\n",i==s?'>':' ',p->items[i].display_name?p->items[i].display_name:"",p->items[i].rom_count);puts("\nUp/Down: select   Return: games   Q: quit");}
-static void drawg(const romm_game_list_t*g,size_t s,const romm_game_t*d,long total){size_t i,from=s>7?s-7:0;cls();printf("ROMM Amiga 0.8.1 - Games (%ld total)\n\n",total);for(i=from;i<g->count&&i<from+15;i++)printf("%c %-35.35s\n",i==s?'>':' ',g->items[i].name?g->items[i].name:"");puts("\n----------------------------------------");if(d&&d->name){printf("Name: ");cut(d->name,60);printf("\nFile: ");cut(d->fs_name,60);printf("\nPlatform: ");cut(d->platform_display_name,50);printf("\nDescription: ");cut(d->summary,500);puts("");}puts("\nReturn: download   Esc: back   Q: quit");}
 
-int main(int ac,char**av){
+static void drawp(const romm_platform_list_t*p,size_t s,size_t top)
+{
+    size_t i,end=top+PLATFORM_ROWS;
+    if(end>p->count) end=p->count;
+    cls(); puts("ROMM Amiga 0.8.2 - Platforms\n");
+    if(top) puts("  ^ more");
+    for(i=top;i<end;i++) {
+        marker(i==s);
+        printf("%-28.28s %6ld\n",p->items[i].display_name?p->items[i].display_name:"",p->items[i].rom_count);
+    }
+    if(end<p->count) puts("  v more");
+    puts("\nUp/Down or W/S: select   Return: games   Q: quit");
+}
+
+static void drawg(const romm_game_list_t*g,size_t s,size_t top,const romm_game_t*d,long total,size_t off)
+{
+    size_t i,end=top+GAME_ROWS;
+    if(end>g->count) end=g->count;
+    cls();printf("ROMM Amiga 0.8.2 - Games (%ld total, %lu-%lu)\n\n",total,
+        (unsigned long)(off+1),(unsigned long)(off+g->count));
+    if(off || top) puts("  ^ more");
+    for(i=top;i<end;i++) { marker(i==s); printf("%-35.35s\n",g->items[i].name?g->items[i].name:""); }
+    if(off+g->count<(size_t)total || end<g->count) puts("  v more");
+    puts("\n----------------------------------------");
+    if(d&&d->name){printf("Name: ");cut(d->name,60);printf("\nFile: ");cut(d->fs_name,60);printf("\nPlatform: ");cut(d->platform_display_name,50);printf("\nDescription: ");cut(d->summary,300);puts("");}
+    puts("\nReturn: download   Esc/B: back   Q: quit");
+}
+
+static int load_info(romm_client_t *c,romm_game_list_t *g,size_t gs,romm_game_t *d)
+{
+    int rc; romm_game_free(d); if(!g->count) return ROMM_OK;
+    rc=romm_game_info(c,g->items[gs].id,d); return rc;
+}
+
+int main(int ac,char**av)
+{
     romm_client_t c; romm_platform_list_t p={0}; romm_game_list_t g={0}; romm_game_t d={0};
-    romm_transport_t t; view_t v=V_PLATFORMS; size_t ps=0,gs=0,off=0; long pid=0; int k,rc=0;
-    TRACE("start");
+    romm_transport_t t; view_t v=V_PLATFORMS; size_t ps=0,ptop=0,gs=0,gtop=0,off=0; long pid=0; int k,rc=0,raw=0;
     if(ac!=3){printf("Usage: %s http://PROXY:PORT TOKEN\n",av[0]);return 2;}
-    TRACE("create transport"); t=romm_amiga_transport();
-    TRACE("client init"); rc=romm_client_init(&c,av[1],av[2],t); if(rc){printf("client init: %s\n",romm_strerror(rc));goto shutdown;}
-    TRACE("request platforms"); rc=romm_platforms(&c,&p);
-    printf("[ROMM] platforms rc=%d count=%lu\n",rc,(unsigned long)p.count);fflush(stdout);
-    if(rc){printf("Platforms: %s\n",romm_strerror(rc));goto done;}
-    TRACE("draw platform list");
-    for(;;){
-        if(v==V_PLATFORMS)drawp(&p,ps);else drawg(&g,gs,&d,g.total);
-        k=getkey(); if(k=='q'||k=='Q')break;
-        if(v==V_PLATFORMS){
-            if(k==1001&&ps)ps--; else if(k==1002&&ps+1<p.count)ps++;
-            else if(k==13&&p.count){
-                pid=p.items[ps].id;off=0;romm_game_list_free(&g);
-                printf("[ROMM] request games platform=%ld\n",pid);fflush(stdout);
-                rc=romm_games(&c,pid,50,off,&g);
-                printf("[ROMM] games rc=%d count=%lu total=%ld\n",rc,(unsigned long)g.count,g.total);fflush(stdout);
-                if(!rc&&g.count){gs=0;romm_game_free(&d);rc=romm_game_info(&c,g.items[0].id,&d);printf("[ROMM] info rc=%d id=%ld\n",rc,g.items[0].id);fflush(stdout);if(!rc)v=V_GAMES;}
+    t=romm_amiga_transport();
+    rc=romm_client_init(&c,av[1],av[2],t); if(rc){printf("client init: %s\n",romm_strerror(rc));goto shutdown;}
+    rc=romm_platforms(&c,&p); if(rc){printf("Platforms: %s\n",romm_strerror(rc));goto done;}
+
+    /* Amiga console must be RAW or cursor keys are line-buffered. */
+    if(SetMode(Input(),1)) raw=1;
+
+    for(;;) {
+        if(v==V_PLATFORMS) drawp(&p,ps,ptop); else drawg(&g,gs,gtop,&d,g.total,off);
+        k=getkey(); if(k=='q'||k=='Q') break;
+        if(v==V_PLATFORMS) {
+            if(k==KEY_UP && ps) { ps--; if(ps<ptop) ptop=ps; }
+            else if(k==KEY_DOWN && ps+1<p.count) { ps++; if(ps>=ptop+PLATFORM_ROWS) ptop=ps-PLATFORM_ROWS+1; }
+            else if(k==13 && p.count) {
+                pid=p.items[ps].id; off=0; gs=gtop=0; romm_game_list_free(&g); romm_game_free(&d);
+                rc=romm_games(&c,pid,PAGE_GAMES,off,&g);
+                if(!rc&&g.count) { rc=load_info(&c,&g,0,&d); if(!rc)v=V_GAMES; }
             }
         } else {
-            if(k==27){romm_game_free(&d);romm_game_list_free(&g);v=V_PLATFORMS;}
-            else if(k==1001&&gs){gs--;romm_game_free(&d);rc=romm_game_info(&c,g.items[gs].id,&d);}
-            else if(k==1002&&gs+1<g.count){gs++;romm_game_free(&d);rc=romm_game_info(&c,g.items[gs].id,&d);}
-            else if(k==13&&d.fs_name){printf("\nDownloading %s...\n",d.fs_name);rc=romm_download_rom(&c,d.id,d.fs_name);printf(rc?"Download failed: %s\n":"Downloaded: %s\n",rc?romm_strerror(rc):d.fs_name);Delay(75);}
+            if(k==27) { romm_game_free(&d);romm_game_list_free(&g);v=V_PLATFORMS; }
+            else if(k==KEY_UP) {
+                if(gs) { gs--; if(gs<gtop) gtop=gs; rc=load_info(&c,&g,gs,&d); }
+                else if(off>=PAGE_GAMES) {
+                    size_t newoff=off-PAGE_GAMES; romm_game_list_t ng={0};
+                    rc=romm_games(&c,pid,PAGE_GAMES,newoff,&ng);
+                    if(!rc&&ng.count){romm_game_free(&d);romm_game_list_free(&g);g=ng;off=newoff;gs=g.count-1;gtop=(g.count>GAME_ROWS)?g.count-GAME_ROWS:0;rc=load_info(&c,&g,gs,&d);} else romm_game_list_free(&ng);
+                }
+            }
+            else if(k==KEY_DOWN) {
+                if(gs+1<g.count) { gs++; if(gs>=gtop+GAME_ROWS) gtop=gs-GAME_ROWS+1; rc=load_info(&c,&g,gs,&d); }
+                else if(off+g.count<(size_t)g.total) {
+                    size_t newoff=off+g.count; romm_game_list_t ng={0};
+                    rc=romm_games(&c,pid,PAGE_GAMES,newoff,&ng);
+                    if(!rc&&ng.count){romm_game_free(&d);romm_game_list_free(&g);g=ng;off=newoff;gs=gtop=0;rc=load_info(&c,&g,0,&d);} else romm_game_list_free(&ng);
+                }
+            }
+            else if(k==13&&d.fs_name){cls();printf("Downloading %s...\n",d.fs_name);rc=romm_download_rom(&c,d.id,d.fs_name);printf(rc?"Download failed: %s\n":"Downloaded: %s\n",rc?romm_strerror(rc):d.fs_name);Delay(75);}
         }
     }
+    if(raw) SetMode(Input(),0);
 done:
-    TRACE("cleanup");romm_game_free(&d);romm_game_list_free(&g);romm_platform_list_free(&p);romm_client_destroy(&c);
+    romm_game_free(&d);romm_game_list_free(&g);romm_platform_list_free(&p);romm_client_destroy(&c);
 shutdown:
-    romm_amiga_transport_shutdown();TRACE("exit");return rc?1:0;
+    romm_amiga_transport_shutdown();return rc?1:0;
 }
