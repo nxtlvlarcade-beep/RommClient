@@ -1,0 +1,5 @@
+
+/romm-cli
+/romm-tui
+*.o
+*.a
