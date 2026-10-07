@@ -1,7 +1,7 @@
 CROSS ?= m68k-amigaos-
 CC := $(CROSS)gcc
 AR := $(CROSS)ar
-CFLAGS = -g -O0 -Wall -Wextra -std=c99 -m68020
+CFLAGS ?= -g -O0 -Wall -Wextra -std=c99 -m68020
 CPPFLAGS += -Iinclude -Isrc
 CORE_OBJ = build-amiga/libromm.o build-amiga/minijson.o
 AMIGA_OBJ = build-amiga/transport_amiga.o build-amiga/romm_amiga.o

@@ -87,3 +87,8 @@ keeps the first native transport small enough to validate networking and API beh
 but is NOT the final low-memory A1200 download implementation. The next transport
 revision should stream the response body directly to disk and handle HTTP/1.1 chunked
 encoding. The host libcurl backend already streams downloads.
+
+### 0.6-debugfix
+Diagnostic Amiga build for the observed 68020 Address Error. It adds trace markers,
+uses the correct already-prefixed Authorization value, checks recv() failures and
+request truncation, bounds response growth, and uses debug symbols with -O0.
