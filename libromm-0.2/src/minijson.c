@@ -1,0 +1,8 @@
+#include "minijson.h"
+#include <string.h>
+static int alloc(mj_token_t*t,int max,int*n){int i=*n;if(i>=max)return-1;t[i].type=MJ_UNDEFINED;t[i].start=t[i].end=-1;t[i].size=0;t[i].parent=-1;(*n)++;return i;}
+static int str(const char*j,int*p,mj_token_t*t,int max,int*n,int par){int s=++*p,i;for(;j[*p];++*p){if(j[*p]=='"'){i=alloc(t,max,n);if(i<0)return-1;t[i].type=MJ_STRING;t[i].start=s;t[i].end=*p;t[i].parent=par;return i;}if(j[*p]=='\\'&&j[*p+1])++*p;}return-2;}
+static int prim(const char*j,int*p,mj_token_t*t,int max,int*n,int par){int s=*p,i;while(j[*p]&&!strchr(" \t\r\n,]}",j[*p]))++*p;i=alloc(t,max,n);if(i<0)return-1;t[i].type=MJ_PRIMITIVE;t[i].start=s;t[i].end=*p;t[i].parent=par;--*p;return i;}
+int mj_parse(const char*j,mj_token_t*t,int max){int p,n=0,par=-1,i;for(p=0;j[p];++p){char c=j[p];if(c=='{'||c=='['){i=alloc(t,max,&n);if(i<0)return-1;t[i].type=c=='{'?MJ_OBJECT:MJ_ARRAY;t[i].start=p;t[i].parent=par;if(par>=0)t[par].size++;par=i;}else if(c=='}'||c==']'){mj_type_t w=c=='}'?MJ_OBJECT:MJ_ARRAY;for(i=n-1;i>=0;--i)if(t[i].start>=0&&t[i].end<0)break;if(i<0||t[i].type!=w)return-2;t[i].end=p+1;par=t[i].parent;}else if(c=='"'){i=str(j,&p,t,max,&n,par);if(i<0)return i;if(par>=0)t[par].size++;}else if(c==':'||c==','||c==' '||c=='\t'||c=='\r'||c=='\n'){}else{i=prim(j,&p,t,max,&n,par);if(i<0)return i;if(par>=0)t[par].size++;}}return n;}
+int mj_eq(const char*j,const mj_token_t*t,const char*s){int n=t->end-t->start;return t->type==MJ_STRING&&(int)strlen(s)==n&&!strncmp(j+t->start,s,(size_t)n);}
+int mj_skip(const mj_token_t*t,int idx,int nt){int e=t[idx].end,i=idx+1;while(i<nt&&t[i].start>=0&&t[i].start<e)i++;return i;}
