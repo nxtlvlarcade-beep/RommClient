@@ -1,6 +1,6 @@
 CC ?= cc
 AR ?= ar
-CFLAGS ?= -O2 -Wall -Wextra -std=c99
+CFLAGS = -g -O0 -Wall -Wextra -std=c99 -m68020
 CPPFLAGS += -Iinclude -Isrc
 LDLIBS += -lcurl
 CORE_OBJ=src/libromm.o src/minijson.o
