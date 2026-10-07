@@ -103,3 +103,7 @@ request truncation, bounds response growth, and uses debug symbols with -O0.
 - ROM downloads stream directly to disk instead of buffering the complete ROM in RAM.
 - 64 KiB receive progress messages make slow classic-Amiga transfers observable.
 - Keeps the Roadshow/SANA-II compatible `bsdsocket.library` transport; HTTPS remains intentionally unsupported on Amiga.
+
+## CI artifacts (0.7 corrected)
+
+The Jenkins pipeline builds and archives both Linux frontends (`romm-cli`, `romm-tui`) and the AmigaOS 68k frontend (`romm-amiga`). The Amiga build is always invoked explicitly with `make -f Makefile.amiga all` and uses `/opt/amiga/bin` in `PATH`.
