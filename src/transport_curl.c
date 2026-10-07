@@ -1,131 +1,13 @@
 #include "libromm_curl.h"
-
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct {
-    char *data;
-    size_t size;
-} memory_t;
-
-static size_t write_memory(void *ptr, size_t size, size_t nmemb, void *userdata) {
-    size_t n = size * nmemb;
-    memory_t *m = (memory_t *)userdata;
-    char *p = (char *)realloc(m->data, m->size + n + 1);
-    if (!p) return 0;
-    m->data = p;
-    memcpy(m->data + m->size, ptr, n);
-    m->size += n;
-    m->data[m->size] = 0;
-    return n;
-}
-
-static struct curl_slist *headers_for(const char *authorization) {
-    struct curl_slist *h = NULL;
-    if (authorization && authorization[0]) {
-        char line[1024];
-        snprintf(line, sizeof(line), "Authorization: %s", authorization);
-        h = curl_slist_append(h, line);
-    }
-    h = curl_slist_append(h, "Accept: application/json");
-    return h;
-}
-
-static int curl_get(void *userdata, const char *url, const char *authorization,
-                    romm_http_response_t *response) {
-    CURL *curl;
-    CURLcode cc;
-    struct curl_slist *headers;
-    memory_t mem = {0, 0};
-    (void)userdata;
-
-    curl = curl_easy_init();
-    if (!curl) return ROMM_ERR_TRANSPORT;
-    headers = headers_for(authorization);
-
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_memory);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &mem);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "libromm-simple/0.1");
-
-    cc = curl_easy_perform(curl);
-    if (cc == CURLE_OK)
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status);
-
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
-    if (cc != CURLE_OK) {
-        free(mem.data);
-        return ROMM_ERR_TRANSPORT;
-    }
-    response->body = mem.data;
-    response->body_size = mem.size;
-    return ROMM_OK;
-}
-
-static size_t write_file(void *ptr, size_t size, size_t nmemb, void *userdata) {
-    return fwrite(ptr, size, nmemb, (FILE *)userdata);
-}
-
-static int curl_download(void *userdata, const char *url, const char *authorization,
-                         const char *destination) {
-    CURL *curl;
-    CURLcode cc;
-    struct curl_slist *headers;
-    FILE *f;
-    long status = 0;
-    (void)userdata;
-
-    f = fopen(destination, "wb");
-    if (!f) return ROMM_ERR_IO;
-
-    curl = curl_easy_init();
-    if (!curl) { fclose(f); return ROMM_ERR_TRANSPORT; }
-    headers = headers_for(authorization);
-
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_file);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, f);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "libromm-simple/0.1");
-
-    cc = curl_easy_perform(curl);
-    if (cc == CURLE_OK)
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-    fclose(f);
-
-    if (cc != CURLE_OK) {
-        remove(destination);
-        return ROMM_ERR_TRANSPORT;
-    }
-    if (status < 200 || status >= 300) {
-        remove(destination);
-        return ROMM_ERR_HTTP;
-    }
-    return ROMM_OK;
-}
-
-static void curl_free_response(void *userdata, romm_http_response_t *response) {
-    (void)userdata;
-    if (!response) return;
-    free(response->body);
-    memset(response, 0, sizeof(*response));
-}
-
-romm_transport_t romm_curl_transport(void) {
-    romm_transport_t t;
-    memset(&t, 0, sizeof(t));
-    t.get = curl_get;
-    t.download = curl_download;
-    t.free_response = curl_free_response;
-    return t;
-}
+typedef struct{char*d;size_t n;}mem_t;
+static size_t wm(void*p,size_t s,size_t n,void*u){size_t z=s*n;mem_t*m=u;char*q=realloc(m->d,m->n+z+1);if(!q)return 0;m->d=q;memcpy(m->d+m->n,p,z);m->n+=z;m->d[m->n]=0;return z;}
+static struct curl_slist*hdr(const char*a){struct curl_slist*h=NULL;char b[2048];if(a&&*a){snprintf(b,sizeof(b),"Authorization: %s",a);h=curl_slist_append(h,b);}return curl_slist_append(h,"Accept: application/json");}
+static int get(void*u,const char*url,const char*a,romm_http_response_t*r){CURL*c;CURLcode x;struct curl_slist*h;mem_t m={0};(void)u;c=curl_easy_init();if(!c)return ROMM_ERR_TRANSPORT;h=hdr(a);curl_easy_setopt(c,CURLOPT_URL,url);curl_easy_setopt(c,CURLOPT_HTTPHEADER,h);curl_easy_setopt(c,CURLOPT_FOLLOWLOCATION,1L);curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,wm);curl_easy_setopt(c,CURLOPT_WRITEDATA,&m);x=curl_easy_perform(c);if(x==CURLE_OK)curl_easy_getinfo(c,CURLINFO_RESPONSE_CODE,&r->status);curl_slist_free_all(h);curl_easy_cleanup(c);if(x!=CURLE_OK){free(m.d);return ROMM_ERR_TRANSPORT;}r->body=m.d;r->body_size=m.n;return 0;}
+static size_t wf(void*p,size_t s,size_t n,void*u){return fwrite(p,s,n,(FILE*)u);}
+static int dl(void*u,const char*url,const char*a,const char*d){CURL*c;CURLcode x;struct curl_slist*h;FILE*f;long st=0;(void)u;f=fopen(d,"wb");if(!f)return ROMM_ERR_IO;c=curl_easy_init();if(!c){fclose(f);return ROMM_ERR_TRANSPORT;}h=hdr(a);curl_easy_setopt(c,CURLOPT_URL,url);curl_easy_setopt(c,CURLOPT_HTTPHEADER,h);curl_easy_setopt(c,CURLOPT_FOLLOWLOCATION,1L);curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,wf);curl_easy_setopt(c,CURLOPT_WRITEDATA,f);x=curl_easy_perform(c);if(x==CURLE_OK)curl_easy_getinfo(c,CURLINFO_RESPONSE_CODE,&st);curl_slist_free_all(h);curl_easy_cleanup(c);fclose(f);if(x!=CURLE_OK||st<200||st>=300){remove(d);return x!=CURLE_OK?ROMM_ERR_TRANSPORT:ROMM_ERR_HTTP;}return 0;}
+static void fr(void*u,romm_http_response_t*r){(void)u;free(r->body);memset(r,0,sizeof(*r));}
+romm_transport_t romm_curl_transport(void){romm_transport_t t={get,dl,fr,NULL};return t;}

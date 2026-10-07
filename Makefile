@@ -1,16 +1,17 @@
 CC ?= cc
+AR ?= ar
 CFLAGS ?= -O2 -Wall -Wextra -std=c99
-CPPFLAGS += -Iinclude
+CPPFLAGS += -Iinclude -Isrc
 LDLIBS += -lcurl
-
-OBJ = src/libromm.o src/transport_curl.o
-
-all: romm-cli
-
-romm-cli: $(OBJ) examples/romm_cli.o
-	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
-
+CORE_OBJ=src/libromm.o src/minijson.o
+CURL_OBJ=src/transport_curl.o
+all: libromm.a libromm-curl.a romm-cli
+libromm.a: $(CORE_OBJ)
+	$(AR) rcs $@ $^
+libromm-curl.a: $(CURL_OBJ)
+	$(AR) rcs $@ $^
+romm-cli: examples/romm_cli.o libromm.a libromm-curl.a
+	$(CC) $(CFLAGS) -o $@ examples/romm_cli.o libromm.a libromm-curl.a $(LDLIBS)
 clean:
-	rm -f $(OBJ) examples/romm_cli.o romm-cli
-
+	rm -f $(CORE_OBJ) $(CURL_OBJ) examples/romm_cli.o libromm.a libromm-curl.a romm-cli
 .PHONY: all clean

@@ -1,53 +1,9 @@
 pipeline {
-    agent {
-        label 'libromm'
-    }
-
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-    }
-
+    agent { label 'libromm' }
+    options { timestamps(); disableConcurrentBuilds() }
     stages {
-        stage('Environment') {
-            steps {
-                sh '''
-                    uname -a
-                    gcc --version
-                    make --version
-                    curl --version
-                    pkg-config --modversion libcurl
-                '''
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh '''
-                    set -eux
-                    make clean || true
-                    make
-                '''
-            }
-        }
-
-        stage('Verify') {
-            steps {
-                sh '''
-                    test -x romm-cli
-                    file romm-cli
-                    ldd romm-cli || true
-                '''
-            }
-        }
+        stage('Build') { steps { sh 'set -eux; make clean; make' } }
+        stage('Verify') { steps { sh 'test -f libromm.a; test -f libromm-curl.a; test -x romm-cli; file libromm.a libromm-curl.a romm-cli' } }
     }
-
-    post {
-        success {
-            archiveArtifacts(
-                artifacts: 'romm-cli',
-                fingerprint: true
-            )
-        }
-    }
+    post { success { archiveArtifacts artifacts: 'libromm.a,libromm-curl.a,romm-cli,include/*.h', fingerprint: true } }
 }
