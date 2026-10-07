@@ -40,7 +40,7 @@ For an emulator, point `ROMM_LAUNCHER` at a wrapper executable/script that accep
 downloaded ROM path as its first argument. This launcher hook is frontend-specific and
 will later be replaced by an Amiga/MorphOS launcher backend.
 
-## 0.6: AmigaOS 3.x / 68020 experimental port
+## 0.7: AmigaOS 3.x / 68020 experimental port
 
 This release adds an experimental native AmigaOS 3.x frontend (`romm-amiga`) and an
 HTTP-only `bsdsocket.library` transport. The portable libromm core remains shared with
@@ -80,7 +80,7 @@ in command history/process arguments.
 The frontend accepts both the Amiga CSI byte (0x9b) and ANSI ESC-[ arrow sequences.
 Game descriptions come from the ROMM `summary` field already parsed by libromm 0.5+.
 
-### Important 0.6 limitation
+### Important 0.7 limitation
 
 The initial Amiga transport buffers an HTTP response before writing a download. This
 keeps the first native transport small enough to validate networking and API behavior,
@@ -88,7 +88,18 @@ but is NOT the final low-memory A1200 download implementation. The next transpor
 revision should stream the response body directly to disk and handle HTTP/1.1 chunked
 encoding. The host libcurl backend already streams downloads.
 
-### 0.6-debugfix
+### 0.7
 Diagnostic Amiga build for the observed 68020 Address Error. It adds trace markers,
 uses the correct already-prefixed Authorization value, checks recv() failures and
 request truncation, bounds response growth, and uses debug symbols with -O0.
+
+
+## 0.7 Amiga transport changes
+
+- Hardened receive-buffer arithmetic against `size_t` overflow.
+- Checks negative `recv()` results instead of accepting partial responses.
+- Validates request truncation and DNS address length.
+- Metadata responses use one allocation: HTTP headers are removed in-place with `memmove()`.
+- ROM downloads stream directly to disk instead of buffering the complete ROM in RAM.
+- 64 KiB receive progress messages make slow classic-Amiga transfers observable.
+- Keeps the Roadshow/SANA-II compatible `bsdsocket.library` transport; HTTPS remains intentionally unsupported on Amiga.
