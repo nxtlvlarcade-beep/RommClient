@@ -1,19 +1,49 @@
 CC ?= cc
 AR ?= ar
+
 CFLAGS ?= -O2 -Wall -Wextra -std=c99
-CPPFLAGS += -Iinclude -Isrc
-LDLIBS += -lcurl
-CORE_OBJ=src/libromm.o src/minijson.o
-CURL_OBJ=src/transport_curl.o
-all: libromm.a libromm-curl.a romm-cli romm-tui
-libromm.a: $(CORE_OBJ)
-	$(AR) rcs $@ $^
-libromm-curl.a: $(CURL_OBJ)
-	$(AR) rcs $@ $^
-romm-cli: examples/romm_cli.o libromm.a libromm-curl.a
-	$(CC) $(CFLAGS) -o $@ examples/romm_cli.o libromm.a libromm-curl.a $(LDLIBS)
-romm-tui: examples/romm_tui.o libromm.a libromm-curl.a
-	$(CC) $(CFLAGS) -o $@ examples/romm_tui.o libromm.a libromm-curl.a $(LDLIBS)
-clean:
-	rm -f $(CORE_OBJ) $(CURL_OBJ) examples/romm_cli.o examples/romm_tui.o libromm.a libromm-curl.a romm-cli romm-tui
+CPPFLAGS ?= -Iinclude
+
+LIB_OBJS = \
+	src/libromm.o \
+	src/minijson.o
+
+CURL_OBJS = \
+	src/transport_curl.o
+
 .PHONY: all clean
+
+all: libromm.a libromm-curl.a romm-cli romm-tui
+
+libromm.a: $(LIB_OBJS)
+	$(AR) rcs $@ $^
+
+libromm-curl.a: $(CURL_OBJS)
+	$(AR) rcs $@ $^
+
+romm-cli: examples/romm_cli.o libromm.a libromm-curl.a
+	$(CC) $(CFLAGS) -o $@ \
+		examples/romm_cli.o \
+		libromm.a libromm-curl.a \
+		-lcurl
+
+romm-tui: examples/romm_tui.o libromm.a libromm-curl.a
+	$(CC) $(CFLAGS) -o $@ \
+		examples/romm_tui.o \
+		libromm.a libromm-curl.a \
+		-lcurl
+
+src/%.o: src/%.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+examples/%.o: examples/%.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f \
+		src/*.o \
+		examples/*.o \
+		libromm.a \
+		libromm-curl.a \
+		romm-cli \
+		romm-tui
