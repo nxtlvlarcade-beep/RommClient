@@ -1,0 +1,25 @@
+CROSS ?= m68k-amigaos-
+CC := $(CROSS)gcc
+AR := $(CROSS)ar
+CFLAGS ?= -Os -Wall -Wextra -std=c99 -m68020
+CPPFLAGS += -Iinclude -Isrc
+CORE_OBJ = build-amiga/libromm.o build-amiga/minijson.o
+AMIGA_OBJ = build-amiga/transport_amiga.o build-amiga/romm_amiga.o
+
+all: romm-amiga
+
+build-amiga:
+	mkdir -p $@
+build-amiga/libromm.o: src/libromm.c | build-amiga
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+build-amiga/minijson.o: src/minijson.c | build-amiga
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+build-amiga/transport_amiga.o: src/transport_amiga.c | build-amiga
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+build-amiga/romm_amiga.o: examples/romm_amiga.c | build-amiga
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+romm-amiga: $(CORE_OBJ) $(AMIGA_OBJ)
+	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) $(AMIGA_OBJ)
+clean:
+	rm -rf build-amiga romm-amiga
+.PHONY: all clean

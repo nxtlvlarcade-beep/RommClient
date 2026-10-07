@@ -39,3 +39,51 @@ Optional launcher example on Linux:
 For an emulator, point `ROMM_LAUNCHER` at a wrapper executable/script that accepts the
 downloaded ROM path as its first argument. This launcher hook is frontend-specific and
 will later be replaced by an Amiga/MorphOS launcher backend.
+
+## 0.6: AmigaOS 3.x / 68020 experimental port
+
+This release adds an experimental native AmigaOS 3.x frontend (`romm-amiga`) and an
+HTTP-only `bsdsocket.library` transport. The portable libromm core remains shared with
+the host build.
+
+### Cross build
+
+A GCC AmigaOS cross toolchain that provides `m68k-amigaos-gcc`, NDK headers and
+bsdsocket/AmiTCP-compatible headers is required:
+
+    make -f Makefile.amiga clean
+    make -f Makefile.amiga
+
+Default CPU target is 68020 (`-m68020`), suitable as a baseline for an accelerated
+A1200. Override `CFLAGS` if required.
+
+### Network model
+
+`romm-amiga` deliberately supports `http://` only. Use it only on a trusted LAN and
+place a small HTTP reverse proxy in front of the HTTPS ROMM server. The proxy must
+forward `/api/...` and download requests to ROMM. Do not expose that plaintext proxy
+to an untrusted network.
+
+    romm-amiga http://192.168.0.20:8088 TOKEN
+
+The bearer token is still supplied on the command line in this experimental release.
+A later revision should read it from a config/environment source so it is not exposed
+in command history/process arguments.
+
+### Controls
+
+- Up/Down: select platform/game
+- Return: open platform / download game
+- Esc: games -> platforms
+- Q: quit
+
+The frontend accepts both the Amiga CSI byte (0x9b) and ANSI ESC-[ arrow sequences.
+Game descriptions come from the ROMM `summary` field already parsed by libromm 0.5+.
+
+### Important 0.6 limitation
+
+The initial Amiga transport buffers an HTTP response before writing a download. This
+keeps the first native transport small enough to validate networking and API behavior,
+but is NOT the final low-memory A1200 download implementation. The next transport
+revision should stream the response body directly to disk and handle HTTP/1.1 chunked
+encoding. The host libcurl backend already streams downloads.
