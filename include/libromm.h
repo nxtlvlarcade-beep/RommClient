@@ -21,6 +21,27 @@ void romm_client_destroy(romm_client_t*);
 int romm_get_json(romm_client_t*,const char*,char**);
 int romm_platforms(romm_client_t*,romm_platform_list_t*);
 void romm_platform_list_free(romm_platform_list_t*);
+
+typedef struct {
+    long id;
+    long platform_id;
+    char *name;
+    char *fs_name;
+    char *platform_display_name;
+} romm_game_t;
+
+typedef struct {
+    romm_game_t *items;
+    size_t count;
+    long total;
+} romm_game_list_t;
+
+int romm_games(romm_client_t *client, long platform_id,
+               size_t limit, size_t offset, romm_game_list_t *out);
+int romm_search_games(romm_client_t *client, long platform_id,
+                      const char *text, size_t limit, romm_game_list_t *out);
+void romm_game_list_free(romm_game_list_t *list);
+
 int romm_download_file(romm_client_t*,const char*,const char*);
 const char *romm_strerror(int);
 #endif

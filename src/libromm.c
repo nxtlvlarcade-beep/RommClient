@@ -1,6 +1,7 @@
 #include "libromm.h"
 #include "minijson.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 static char*dupstr(const char*s){size_t n;char*p;if(!s)return NULL;n=strlen(s)+1;p=malloc(n);if(p)memcpy(p,s,n);return p;}
 static char*tokstr(const char*j,const mj_token_t*t){size_t n=t->end-t->start;char*p=malloc(n+1);if(!p)return NULL;memcpy(p,j+t->start,n);p[n]=0;return p;}
@@ -16,5 +17,148 @@ static void pfree(romm_platform_t*p){free(p->slug);free(p->name);free(p->display
 static int pobj(const char*j,mj_token_t*t,int obj,int nt,romm_platform_t*p){int i=obj+1;memset(p,0,sizeof(*p));p->generation=-1;while(i<nt&&t[i].start<t[obj].end){int v;if(t[i].parent!=obj){i++;continue;}v=i+1;if(v>=nt)break;if(mj_eq(j,&t[i],"id"))p->id=tlong(j,&t[v]);else if(mj_eq(j,&t[i],"rom_count"))p->rom_count=tlong(j,&t[v]);else if(mj_eq(j,&t[i],"generation")&&strncmp(j+t[v].start,"null",4))p->generation=tlong(j,&t[v]);else if(mj_eq(j,&t[i],"fs_size_bytes"))p->fs_size_bytes=tull(j,&t[v]);else if(mj_eq(j,&t[i],"is_identified"))p->is_identified=tbool(j,&t[v]);else if(mj_eq(j,&t[i],"missing_from_fs"))p->missing_from_fs=tbool(j,&t[v]);else if(mj_eq(j,&t[i],"slug")&&t[v].type==MJ_STRING)p->slug=tokstr(j,&t[v]);else if(mj_eq(j,&t[i],"name")&&t[v].type==MJ_STRING)p->name=tokstr(j,&t[v]);else if(mj_eq(j,&t[i],"display_name")&&t[v].type==MJ_STRING)p->display_name=tokstr(j,&t[v]);else if(mj_eq(j,&t[i],"category")&&t[v].type==MJ_STRING)p->category=tokstr(j,&t[v]);else if(mj_eq(j,&t[i],"family_name")&&t[v].type==MJ_STRING)p->family_name=tokstr(j,&t[v]);i=mj_skip(t,v,nt);}if(!p->slug)p->slug=dupstr("");if(!p->name)p->name=dupstr("");if(!p->display_name)p->display_name=dupstr(p->name);if(!p->category)p->category=dupstr("");if(!p->family_name)p->family_name=dupstr("");if(!p->slug||!p->name||!p->display_name||!p->category||!p->family_name){pfree(p);return ROMM_ERR_MEMORY;}return 0;}
 int romm_platforms(romm_client_t*c,romm_platform_list_t*out){char*j=NULL;mj_token_t*t=NULL;int nt,cap=4096,rc,i;size_t n=0;if(!c||!out)return ROMM_ERR_ARGUMENT;memset(out,0,sizeof(*out));rc=romm_get_json(c,"/api/platforms",&j);if(rc)return rc;for(;;){t=calloc(cap,sizeof(*t));if(!t){free(j);return ROMM_ERR_MEMORY;}nt=mj_parse(j,t,cap);if(nt!=-1)break;free(t);t=NULL;cap*=2;if(cap>262144){free(j);return ROMM_ERR_PARSE;}}if(nt<1||t[0].type!=MJ_ARRAY){free(t);free(j);return ROMM_ERR_PARSE;}for(i=1;i<nt;i=mj_skip(t,i,nt))if(t[i].parent==0&&t[i].type==MJ_OBJECT)n++;out->items=calloc(n,sizeof(*out->items));if(n&&!out->items){free(t);free(j);return ROMM_ERR_MEMORY;}for(i=1;i<nt;i=mj_skip(t,i,nt))if(t[i].parent==0&&t[i].type==MJ_OBJECT){rc=pobj(j,t,i,nt,&out->items[out->count]);if(rc){romm_platform_list_free(out);free(t);free(j);return rc;}out->count++;}free(t);free(j);return 0;}
 void romm_platform_list_free(romm_platform_list_t*l){size_t i;if(!l)return;for(i=0;i<l->count;i++)pfree(&l->items[i]);free(l->items);memset(l,0,sizeof(*l));}
+
+static void game_free(romm_game_t *g) {
+    if(!g)return;
+    free(g->name); free(g->fs_name); free(g->platform_display_name);
+    memset(g,0,sizeof(*g));
+}
+
+static int game_obj(const char*j,mj_token_t*t,int obj,int nt,romm_game_t*g) {
+    int i=obj+1;
+    memset(g,0,sizeof(*g));
+    while(i<nt && t[i].start<t[obj].end) {
+        int v;
+        if(t[i].parent!=obj){i++;continue;}
+        v=i+1; if(v>=nt)break;
+        if(mj_eq(j,&t[i],"id")) g->id=tlong(j,&t[v]);
+        else if(mj_eq(j,&t[i],"platform_id")) g->platform_id=tlong(j,&t[v]);
+        else if(mj_eq(j,&t[i],"name") && t[v].type==MJ_STRING) g->name=tokstr(j,&t[v]);
+        else if(mj_eq(j,&t[i],"fs_name") && t[v].type==MJ_STRING) g->fs_name=tokstr(j,&t[v]);
+        else if(mj_eq(j,&t[i],"platform_display_name") && t[v].type==MJ_STRING)
+            g->platform_display_name=tokstr(j,&t[v]);
+        i=mj_skip(t,v,nt);
+    }
+    if(!g->name)g->name=dupstr("");
+    if(!g->fs_name)g->fs_name=dupstr("");
+    if(!g->platform_display_name)g->platform_display_name=dupstr("");
+    if(!g->name||!g->fs_name||!g->platform_display_name){game_free(g);return ROMM_ERR_MEMORY;}
+    return ROMM_OK;
+}
+
+static int parse_games_json(const char*j,romm_game_list_t*out) {
+    mj_token_t*t=NULL; int nt,cap=8192,arr=-1,i,rc; size_t n=0;
+    memset(out,0,sizeof(*out));
+    for(;;) {
+        t=calloc((size_t)cap,sizeof(*t));
+        if(!t)return ROMM_ERR_MEMORY;
+        nt=mj_parse(j,t,cap);
+        if(nt!=-1)break;
+        free(t); t=NULL; cap*=2;
+        if(cap>1048576)return ROMM_ERR_PARSE;
+    }
+    if(nt<1){free(t);return ROMM_ERR_PARSE;}
+
+    /* RomM /api/roms is paginated in current releases. Accept both
+       a direct array and object responses containing an "items" array. */
+    if(t[0].type==MJ_ARRAY) arr=0;
+    else if(t[0].type==MJ_OBJECT) {
+        for(i=1;i<nt;) {
+            int v;
+            if(t[i].parent!=0){i++;continue;}
+            v=i+1; if(v>=nt)break;
+            if(mj_eq(j,&t[i],"items") && t[v].type==MJ_ARRAY) arr=v;
+            else if(mj_eq(j,&t[i],"roms") && t[v].type==MJ_ARRAY && arr<0) arr=v;
+            else if(mj_eq(j,&t[i],"total")) out->total=tlong(j,&t[v]);
+            i=mj_skip(t,v,nt);
+        }
+    }
+    if(arr<0){free(t);return ROMM_ERR_PARSE;}
+
+    for(i=arr+1;i<nt;) {
+        if(t[i].parent==arr && t[i].type==MJ_OBJECT)n++;
+        i=mj_skip(t,i,nt);
+    }
+    out->items=calloc(n,sizeof(*out->items));
+    if(n&&!out->items){free(t);return ROMM_ERR_MEMORY;}
+    for(i=arr+1;i<nt;) {
+        if(t[i].parent==arr && t[i].type==MJ_OBJECT) {
+            rc=game_obj(j,t,i,nt,&out->items[out->count]);
+            if(rc){romm_game_list_free(out);free(t);return rc;}
+            out->count++;
+        }
+        i=mj_skip(t,i,nt);
+    }
+    if(out->total==0)out->total=(long)out->count;
+    free(t); return ROMM_OK;
+}
+
+int romm_games(romm_client_t*c,long platform_id,size_t limit,size_t offset,
+               romm_game_list_t*out) {
+    char path[256],*j=NULL; int rc;
+    if(!c||!out||platform_id<=0)return ROMM_ERR_ARGUMENT;
+    if(limit==0)limit=100;
+    snprintf(path,sizeof(path),
+             "/api/roms?platform_ids=%ld&limit=%lu&offset=%lu&with_char_index=false&with_filter_values=false&with_rom_id_index=false",
+             platform_id,(unsigned long)limit,(unsigned long)offset);
+    rc=romm_get_json(c,path,&j); if(rc)return rc;
+    rc=parse_games_json(j,out); free(j); return rc;
+}
+
+static int contains_ci(const char *hay,const char *needle) {
+    size_t i,n;
+    if(!needle||!*needle)return 1;
+    n=strlen(needle);
+    for(;*hay;hay++) {
+        for(i=0;i<n;i++) {
+            unsigned char a=(unsigned char)hay[i],b=(unsigned char)needle[i];
+            if(!a)return 0;
+            if(a>='A'&&a<='Z')a=(unsigned char)(a-'A'+'a');
+            if(b>='A'&&b<='Z')b=(unsigned char)(b-'A'+'a');
+            if(a!=b)break;
+        }
+        if(i==n)return 1;
+    }
+    return 0;
+}
+
+int romm_search_games(romm_client_t*c,long platform_id,const char*text,
+                      size_t limit,romm_game_list_t*out) {
+    romm_game_list_t page; size_t offset=0,page_size=250,i; int rc;
+    if(!c||!text||!out||platform_id<=0)return ROMM_ERR_ARGUMENT;
+    memset(out,0,sizeof(*out));
+    if(limit==0)limit=50;
+    for(;;) {
+        rc=romm_games(c,platform_id,page_size,offset,&page);
+        if(rc){romm_game_list_free(out);return rc;}
+        for(i=0;i<page.count && out->count<limit;i++) {
+            if(contains_ci(page.items[i].name,text) || contains_ci(page.items[i].fs_name,text)) {
+                romm_game_t *q=realloc(out->items,(out->count+1)*sizeof(*q));
+                if(!q){romm_game_list_free(&page);romm_game_list_free(out);return ROMM_ERR_MEMORY;}
+                out->items=q;
+                out->items[out->count]=page.items[i];
+                memset(&page.items[i],0,sizeof(page.items[i]));
+                out->count++;
+            }
+        }
+        {
+            long total=page.total;
+            size_t got=page.count;
+            romm_game_list_free(&page);
+            offset+=got;
+            if(got==0 || (total>0 && offset>=(size_t)total) || out->count>=limit)break;
+        }
+    }
+    out->total=(long)out->count;
+    return ROMM_OK;
+}
+
+void romm_game_list_free(romm_game_list_t*l) {
+    size_t i; if(!l)return;
+    for(i=0;i<l->count;i++)game_free(&l->items[i]);
+    free(l->items); memset(l,0,sizeof(*l));
+}
+
+
 int romm_download_file(romm_client_t*c,const char*p,const char*d){char*u,*a;int rc;if(!c||!p||!d||!c->transport.download)return ROMM_ERR_ARGUMENT;u=urljoin(c->base_url,p);a=auth(c);if(!u){free(a);return ROMM_ERR_MEMORY;}rc=c->transport.download(c->transport.userdata,u,a,d);free(u);free(a);return rc;}
 const char*romm_strerror(int e){switch(e){case 0:return"OK";case -1:return"invalid argument";case -2:return"transport error";case -3:return"HTTP error";case -4:return"out of memory";case -5:return"JSON parse error";case -6:return"I/O error";default:return"unknown error";}}
