@@ -84,7 +84,7 @@ static int grow(char **buf,size_t *cap,size_t need){size_t nc;char*nb;if(need<=*
 /* Metadata GET: one buffer only. After reception the HTTP headers are removed
    in-place, avoiding the old second ~response-sized allocation/copy. */
 static int request_body(const char*url,const char*auth,char**out,size_t*outlen,long*status){
-    au_t u; int s,k,qn; char req[1536],tmp[4096]; char*b=NULL,*body; size_t used=0,cap=0,hn,need,last_report=0;
+    au_t u; int s,k,qn; char req[1536],tmp[512]; char*b=NULL,*body; size_t used=0,cap=0,hn,need,last_report=0;
     if(!out||!outlen||!status)return ROMM_ERR_ARGUMENT;*out=NULL;*outlen=0;*status=0;
     if(parse_http(url,&u))return ROMM_ERR_TRANSPORT;
     printf("[NET] host=%s port=%u path=%s\n",u.host,(unsigned)u.port,u.base[0]?u.base:"/");fflush(stdout);
@@ -92,10 +92,16 @@ static int request_body(const char*url,const char*auth,char**out,size_t*outlen,l
     qn=make_request(req,sizeof(req),&u,auth);if(qn<0){CloseSocket(s);return ROMM_ERR_ARGUMENT;}
     if(send_all(s,req,(size_t)qn)){CloseSocket(s);return ROMM_ERR_TRANSPORT;}printf("[NET] request sent\n");fflush(stdout);
     for(;;){
-        k=recv(s,tmp,sizeof(tmp),0);if(k==0)break;if(k<0){free(b);CloseSocket(s);printf("[NET] recv failed\n");fflush(stdout);return ROMM_ERR_TRANSPORT;}
+        printf("[NET R01] before recv fd=%d buf=%p size=%lu\n",s,(void*)tmp,(unsigned long)sizeof(tmp));fflush(stdout);
+        k=recv(s,tmp,(int)sizeof(tmp),0);
+        printf("[NET R02] recv returned %d\n",k);fflush(stdout);
+        if(k==0)break;if(k<0){free(b);CloseSocket(s);printf("[NET] recv failed\n");fflush(stdout);return ROMM_ERR_TRANSPORT;}
+        printf("[NET R03] before grow used=%lu cap=%lu add=%d\n",(unsigned long)used,(unsigned long)cap,k);fflush(stdout);
         if((size_t)k>((size_t)-1)-used-1){free(b);CloseSocket(s);return ROMM_ERR_MEMORY;}
         need=used+(size_t)k+1;if(grow(&b,&cap,need)){free(b);CloseSocket(s);return ROMM_ERR_MEMORY;}
+        printf("[NET R04] after grow buffer=%p cap=%lu need=%lu\n",(void*)b,(unsigned long)cap,(unsigned long)need);fflush(stdout);
         memcpy(b+used,tmp,(size_t)k);used+=(size_t)k;
+        printf("[NET R05] copied used=%lu\n",(unsigned long)used);fflush(stdout);
         if(used-last_report>=65536U){printf("[NET] received %lu KB\n",(unsigned long)(used/1024U));fflush(stdout);last_report=used;}
     }
     CloseSocket(s);if(!b)return ROMM_ERR_TRANSPORT;b[used]=0;*status=status_code(b);body=header_end(b,used);if(!body){free(b);return ROMM_ERR_TRANSPORT;}
