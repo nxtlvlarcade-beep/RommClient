@@ -164,3 +164,21 @@ execute an AmigaOS binary; this repository does not yet implement a receiver
 hook, so fully automatic post-ZMODEM invocation is not available yet.
 Only extract ZIPs obtained from a trusted gateway: external `UnZip` may not
 protect against malicious archive entries.
+
+### WHDLoad online installer lookup (experimental)
+
+The gateway `/whdload/<rom_id>` now first checks for an already-installed
+`.slave` archive. For other ROM content (including ADF/IPF), it searches the
+**official WHDLoad game index** by normalized RomM title, requires exactly one
+matching game page and current LHA installer, and downloads that installer over
+HTTPS. It returns a ZIP containing `installer.lha` and `romm-installer.txt`.
+No RomM token is sent to whdload.de.
+
+On AmigaOS, `romm-whdload` extracts the ZIP with `C:UnZip`, recognizes the
+installer package, asks permission, and extracts the LHA with `C:LhA`.
+Then run the game-specific installer in Workbench with the matching original
+disk mounted. **This does not automatically convert ADF/IPF or launch an
+uninstalled game**. A title match is not proof of disk-version compatibility.
+The GitHub slave sources are not downloadable ready-to-run installers and are
+not automatically compiled. A working internet connection from the gateway,
+`C:UnZip`, `C:LhA`, WHDLoad and installer prerequisites are required.

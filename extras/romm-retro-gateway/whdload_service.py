@@ -37,6 +37,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+from whdload_catalog import official_installer, CatalogError
+
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -413,11 +415,13 @@ def prepare(rom_id):
     )
 
     source = get(content_url)
-
     validate_hash(source, metadata)
-
-    slave, files = inspect_archive(source)
-
+    try:
+        slave, files = inspect_archive(source)
+    except PackageError:
+        # No pre-installed slave: retrieve the official game-specific installer.
+        # Never pretend that an installer archive contains playable game data.
+        return official_installer(metadata)
     return make_package(slave, files)
 
 
@@ -452,6 +456,7 @@ class Handler(BaseHTTPRequestHandler):
 
         except (
             PackageError,
+            CatalogError,
             ValueError,
             KeyError,
             urllib.error.HTTPError,

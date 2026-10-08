@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/romm-tui /usr/local/bin/romm-tui
 COPY extras/romm-retro-gateway/telnet_server.py /usr/local/bin/telnet_server.py
 COPY extras/romm-retro-gateway/whdload_service.py /usr/local/bin/whdload_service.py
+COPY extras/romm-retro-gateway/whdload_catalog.py /usr/local/bin/whdload_catalog.py
 COPY extras/romm-retro-gateway/index_service.py /usr/local/bin/index_service.py
 COPY extras/romm-retro-gateway/Caddyfile /etc/caddy/Caddyfile
 

@@ -178,6 +178,27 @@ int main(int argc, char **argv)
             return 1;
             }
         }
+        {
+            char marker[PATH_CAP], archive_path[PATH_CAP], cmd[CMD_CAP];
+            if (snprintf(marker, sizeof(marker), "%s/romm-installer.txt", folder) >= (int)sizeof(marker)) return 1;
+            if (exists(marker)) {
+                puts("Official WHDLoad installer downloaded from the Internet.");
+                puts("This installer is NOT a playable game or a converted disk.");
+                printf("Read installer information: %s\n", marker);
+                if (snprintf(archive_path, sizeof(archive_path), "%s/installer.lha", folder) >= (int)sizeof(archive_path)) return 1;
+                if (!exists(archive_path)) { puts("Installer LHA missing."); return 1; }
+                if (!confirm("Extract the official installer using C:LhA?")) return 0;
+                if (snprintf(cmd, sizeof(cmd), "C:LhA x \"%s\" \"%s/\"", archive_path, folder) >= (int)sizeof(cmd) ||
+                    !Execute((STRPTR)cmd, 0, 0)) {
+                    puts("LhA failed. Install C:LhA first.");
+                    return 1;
+                }
+                puts("Installer extracted. Open its .info installer in Workbench.");
+                puts("Mount the matching original ADF/IPF disk as instructed.");
+                puts("No automatic launch or reset. Game data not yet installed.");
+                return 0;
+            }
+        }
         return launch(folder);
     }
     puts("ADF/IPF is original disk media, not an installed WHDLoad game.");

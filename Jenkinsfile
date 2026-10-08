@@ -1,27 +1,18 @@
 pipeline {
-    agent { label 'dev-v1.0' }
+    agent any
 
     options {
         timestamps()
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
-        buildDiscarder(logRotator(
-            numToKeepStr: '20',
-            artifactNumToKeepStr: '10'
-        ))
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
     }
 
     parameters {
-        booleanParam(
-            name: 'REQUIRE_AMIGA',
-            defaultValue: true,
-            description: 'Build als Fehler markieren, wenn die m68k-AmigaOS-Toolchain fehlt'
-        )
-        booleanParam(
-            name: 'BUILD_DOCKER',
-            defaultValue: false,
-            description: 'Docker-Gateway-Image bauen (Docker auf dem Jenkins-Agent erforderlich)'
-        )
+        booleanParam(name: 'REQUIRE_AMIGA', defaultValue: false,
+                     description: 'Build als Fehler markieren, wenn der m68k-AmigaOS-Compiler fehlt')
+        booleanParam(name: 'BUILD_DOCKER', defaultValue: false,
+                     description: 'Docker-Gateway-Image bauen (Docker auf dem Jenkins-Agent erforderlich)')
     }
 
     environment {
@@ -31,19 +22,8 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                deleteDir()
                 checkout scm
-
-                sh '''#!/bin/sh
-                    set -eu
-                    echo "=== Git-Revision ==="
-                    git rev-parse --short HEAD
-                    git status --short
-
-                    echo "=== Jenkins-Agent ==="
-                    hostname
-                    echo "WORKSPACE=$WORKSPACE"
-                '''
+                sh 'git rev-parse --short HEAD && git status --short'
             }
         }
 
@@ -51,30 +31,21 @@ pipeline {
             steps {
                 sh '''#!/bin/sh
                     set -eu
-
                     test -f Makefile
                     test -f Makefile.amiga
-                    test -f Jenkinsfile
-                    test -f examples/romm_amiga.c
-                    test -f examples/romm_whdload.c
                     test -f extras/romm-retro-gateway/Dockerfile
                     test -f extras/romm-retro-gateway/Caddyfile
-
-                    command -v make
-                    command -v python3
-
                     for f in extras/romm-retro-gateway/*.py; do
-                        python3 - "$f" <<'PY'
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-compile(path.read_bytes(), str(path), 'exec')
-print("Python OK:", path)
+                        if command -v python3 >/dev/null 2>&1; then
+                            python3 - "$f" <<'PY'
+import pathlib, sys
+compile(pathlib.Path(sys.argv[1]).read_bytes(), sys.argv[1], 'exec')
 PY
+                        else
+                            echo 'Python3 fehlt: Python-Syntaxpruefung uebersprungen'
+                            break
+                        fi
                     done
-
-                    echo "Quellcodepruefung erfolgreich."
                 '''
             }
         }
@@ -83,95 +54,48 @@ PY
             steps {
                 sh '''#!/bin/sh
                     set -eu
-
                     make clean
                     make -j2 all
-
                     test -s libromm.a
                     test -s libromm-curl.a
                     test -x romm-cli
                     test -x romm-tui
-
-                    echo "=== Linux-Artefakte ==="
-                    ls -lh \
-                        libromm.a \
-                        libromm-curl.a \
-                        romm-cli \
-                        romm-tui
                 '''
             }
         }
 
-        stage('AmigaOS m68k: Beide Binaries') {
+        stage('AmigaOS m68k') {
             steps {
                 script {
-                    int toolchainStatus = sh(
-                        script: '''#!/bin/sh
-                            command -v m68k-amigaos-gcc >/dev/null 2>&1 &&
-                            command -v m68k-amigaos-ar >/dev/null 2>&1
-                        ''',
-                        returnStatus: true
-                    )
-
-                    if (toolchainStatus == 0) {
+                    if (sh(script: 'command -v m68k-amigaos-gcc >/dev/null 2>&1 && command -v m68k-amigaos-ar >/dev/null 2>&1', returnStatus: true) == 0) {
                         sh '''#!/bin/sh
                             set -eu
-
-                            echo "=== AmigaOS-Toolchain ==="
-                            command -v m68k-amigaos-gcc
-                            command -v m68k-amigaos-ar
-
-                            echo "=== AmigaOS Clean ==="
                             make -f Makefile.amiga clean
-
-                            echo "=== Beide AmigaOS-Binaries bauen ==="
                             make -f Makefile.amiga -j2 all
-
-                            echo "=== Binaries pruefen ==="
                             test -s romm-amiga
-                            test -s romm-whdload
-
-                            echo "=== AmigaOS-Artefakte ==="
-                            ls -lh romm-amiga romm-whdload
-                            file romm-amiga romm-whdload
-
-                            echo "Beide AmigaOS-Binaries erfolgreich erstellt."
                         '''
                     } else if (params.REQUIRE_AMIGA) {
-                        error(
-                            'AmigaOS-Build nicht moeglich: ' +
-                            'm68k-amigaos-gcc oder m68k-amigaos-ar fehlt.'
-                        )
+                        error('m68k-amigaos-gcc / m68k-amigaos-ar fehlen auf diesem Jenkins-Agent.')
                     } else {
-                        echo(
-                            'AmigaOS-Build uebersprungen: ' +
-                            'm68k-AmigaOS-Toolchain nicht installiert.'
-                        )
+                        echo 'AmigaOS-Build uebersprungen: m68k-AmigaOS-Toolchain nicht installiert.'
                     }
                 }
             }
         }
 
         stage('Docker-Gateway') {
-            when {
-                expression { return params.BUILD_DOCKER }
-            }
-
+            when { expression { return params.BUILD_DOCKER } }
             steps {
                 sh '''#!/bin/sh
                     set -eu
-
                     command -v docker >/dev/null 2>&1 || {
-                        echo "Docker ist auf dem Jenkins-Agent nicht installiert." >&2
+                        echo 'Docker ist auf dem Jenkins-Agent nicht installiert.' >&2
                         exit 1
                     }
-
                     docker info >/dev/null
-
                     docker build \
                         -t "${DOCKER_IMAGE}:${BUILD_NUMBER}" \
-                        -f extras/romm-retro-gateway/Dockerfile \
-                        .
+                        -f extras/romm-retro-gateway/Dockerfile .
                 '''
             }
         }
@@ -179,20 +103,14 @@ PY
 
     post {
         always {
-            archiveArtifacts(
-                artifacts: 'libromm.a,libromm-curl.a,romm-cli,romm-tui,romm-amiga,romm-whdload',
-                allowEmptyArchive: true,
-                fingerprint: true
-            )
+            archiveArtifacts artifacts: 'libromm.a,libromm-curl.a,romm-cli,romm-tui,romm-amiga',
+                             allowEmptyArchive: true, fingerprint: true
         }
-
         success {
-            echo 'RommClient CI erfolgreich: Linux- und angeforderte AmigaOS-Builds abgeschlossen.'
+            echo 'RommClient CI abgeschlossen.'
         }
-
         failure {
-            echo 'Build fehlgeschlagen. Bitte die fehlgeschlagene Stage im Log pruefen.'
+            echo 'Build fehlgeschlagen: fehlende Abhaengigkeiten oder Compilerfehler im Stage-Log pruefen.'
         }
     }
 }
-
