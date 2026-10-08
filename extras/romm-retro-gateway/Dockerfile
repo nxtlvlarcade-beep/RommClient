@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/romm-tui /usr/local/bin/romm-tui
 COPY extras/romm-retro-gateway/telnet_server.py /usr/local/bin/telnet_server.py
 COPY extras/romm-retro-gateway/whdload_service.py /usr/local/bin/whdload_service.py
+COPY extras/romm-retro-gateway/index_service.py /usr/local/bin/index_service.py
 COPY extras/romm-retro-gateway/Caddyfile /etc/caddy/Caddyfile
 
 RUN mkdir -p /downloads \
@@ -34,4 +35,4 @@ WORKDIR /downloads
 EXPOSE 2323 8080
 
 # Caddy und Telnet gemeinsam starten
-CMD ["sh", "-c", "python3 -u /usr/local/bin/whdload_service.py & caddy run --config /etc/caddy/Caddyfile --adapter caddyfile & exec python3 -u /usr/local/bin/telnet_server.py"]
+CMD ["sh", "-c", "python3 -u /usr/local/bin/whdload_service.py & python3 -u /usr/local/bin/index_service.py & caddy run --config /etc/caddy/Caddyfile --adapter caddyfile & exec python3 -u /usr/local/bin/telnet_server.py"]

@@ -209,9 +209,20 @@ int main(int ac,char**av)
                 if(prompt_search(query,sizeof(query))){filtered=1;rc=search_page(&c,pid,query,&g,&d,&gs,&gtop,&off);}
             }
             else if(k==KEY_LEFT||k==KEY_RIGHT){
-                letter=(char)((letter-'A'+(k==KEY_RIGHT?1:25))%26+'A');
-                query[0]=letter;query[1]=0;filtered=1;
-                rc=search_page(&c,pid,query,&g,&d,&gs,&gtop,&off);
+                int step=(k==KEY_RIGHT?1:25), tries;
+                for(tries=0;tries<26;tries++) {
+                    romm_game_list_t ng={0};
+                    letter=(char)((letter-'A'+step)%26+'A');
+                    rc=romm_letter_games(&c,pid,letter,500,&ng);
+                    if(rc){romm_game_list_free(&ng);break;}
+                    if(ng.count){
+                        romm_game_free(&d);romm_game_list_free(&g);
+                        g=ng;gs=gtop=off=0;filtered=1;
+                        query[0]=letter;query[1]=0;
+                        rc=load_info(&c,&g,0,&d);break;
+                    }
+                    romm_game_list_free(&ng);
+                }
             }
             else if((k=='d'||k=='D')&&d.fs_name){
                 cls();printf("RAW download %s...\n",d.fs_name);
