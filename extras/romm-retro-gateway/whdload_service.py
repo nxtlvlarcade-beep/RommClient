@@ -414,14 +414,34 @@ def prepare(rom_id):
         f"{rom_id}/content/{encoded_name}"
     )
 
+    # Always retrieve the original game, even when only an installer is available.
     source = get(content_url)
-    validate_hash(source, metadata)
     try:
         slave, files = inspect_archive(source)
     except PackageError:
-        # No pre-installed slave: retrieve the official game-specific installer.
-        # Never pretend that an installer archive contains playable game data.
-        return official_installer(metadata)
+        # Installer ZIP from the official catalog + original ROM in one package.
+        # Do not label unverified source data as playable WHDLoad game data.
+        installer_zip = official_installer(metadata)
+        original_name = "original/" + filename
+        if not safe_relative(original_name):
+            raise PackageError("Unsupported original ROM filename")
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED,
+                             compresslevel=3, allowZip64=True) as result:
+            with zipfile.ZipFile(io.BytesIO(installer_zip)) as prepared:
+                for entry in prepared.infolist():
+                    if entry.filename not in ("installer.lha", "romm-installer.txt"):
+                        raise PackageError("Unexpected installer package content")
+                    result.writestr(entry.filename, prepared.read(entry))
+            result.writestr(original_name, source)
+            result.writestr("romm-original.txt", original_name + "\n")
+        package = output.getvalue()
+        if len(package) > LIMIT:
+            raise PackageError("Combined package exceeds size limit")
+        return package
+
+    # Verify integrity before packaging playable game data.
+    validate_hash(source, metadata)
     return make_package(slave, files)
 
 

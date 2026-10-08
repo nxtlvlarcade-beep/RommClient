@@ -187,6 +187,40 @@ int main(int argc, char **argv)
                 printf("Read installer information: %s\n", marker);
                 if (snprintf(archive_path, sizeof(archive_path), "%s/installer.lha", folder) >= (int)sizeof(archive_path)) return 1;
                 if (!exists(archive_path)) { puts("Installer LHA missing."); return 1; }
+                {
+                    char original_marker[PATH_CAP], original_path[PATH_CAP];
+                    FILE *original_file;
+                    if (snprintf(original_marker, sizeof(original_marker), "%s/romm-original.txt", folder) >= (int)sizeof(original_marker)) return 1;
+                    original_file = fopen(original_marker, "r");
+                    if (original_file) {
+                        size_t n;
+                        if (!fgets(original_path, sizeof(original_path), original_file)) {
+                            fclose(original_file); puts("Original ROM manifest unreadable."); return 1;
+                        }
+                        fclose(original_file);
+                        n = strcspn(original_path, "\r\n"); original_path[n] = 0;
+                        if (strncmp(original_path, "original/", 9) ||
+                            !quoted_path(original_path) || strstr(original_path, "..")) {
+                            puts("Invalid original ROM path."); return 1;
+                        }
+                        {
+                            char full[PATH_CAP];
+                            if (snprintf(full, sizeof(full), "%s/%s", folder, original_path) >= (int)sizeof(full)) return 1;
+                            if (!exists(full)) { puts("Original ROM missing."); return 1; }
+                            printf("Original ROM saved: %s\n", full);
+                            if (ends_with(full, ".zip")) {
+                                char extract[PATH_CAP];
+                                if (snprintf(extract, sizeof(extract), "%s/original", folder) >= (int)sizeof(extract)) return 1;
+                                if (confirm("Extract original ROM ZIP into original/?")) {
+                                    if (snprintf(cmd, sizeof(cmd), "C:UnZip -o \"%s\" -d \"%s\"", full, extract) >= (int)sizeof(cmd) ||
+                                        !Execute((STRPTR)cmd, 0, 0)) {
+                                        puts("Original ROM ZIP extraction failed."); return 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (!confirm("Extract the official installer using C:LhA?")) return 0;
                 if (snprintf(cmd, sizeof(cmd), "C:LhA x \"%s\" \"%s/\"", archive_path, folder) >= (int)sizeof(cmd) ||
                     !Execute((STRPTR)cmd, 0, 0)) {

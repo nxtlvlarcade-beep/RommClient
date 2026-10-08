@@ -88,6 +88,23 @@ static void drawp(const romm_platform_list_t*p,size_t s,size_t top)
     puts("\nUp/Down or W/S: select   Return: games   Q: quit");
 }
 
+static void draw_letter(char letter)
+{
+    cls();
+    puts("ROMM Amiga - A-Z selection\n");
+    printf("Letter: %c\n\n", letter);
+    puts("Left/Right: change letter quickly");
+    puts("Loading after 5 seconds without input...");
+    fflush(stdout);
+}
+
+static void draw_loading(char letter)
+{
+    cls();
+    printf("Loading games for %c...\n", letter);
+    fflush(stdout);
+}
+
 static void drawg(const romm_game_list_t*g,size_t s,size_t top,const romm_game_t*d,long total,size_t off)
 {
     size_t i,end=top+GAME_ROWS;
@@ -168,7 +185,7 @@ static int whdload_game(romm_client_t *c,long id)
 int main(int ac,char**av)
 {
     romm_client_t c; romm_platform_list_t p={0}; romm_game_list_t g={0}; romm_game_t d={0};
-    romm_transport_t t; view_t v=V_PLATFORMS; size_t ps=0,ptop=0,gs=0,gtop=0,off=0; long pid=0; int k,rc=0,raw=0,debug=0; char query[128]=""; int filtered=0; char letter='A';
+    romm_transport_t t; view_t v=V_PLATFORMS; size_t ps=0,ptop=0,gs=0,gtop=0,off=0; long pid=0; int k,rc=0,raw=0,debug=0; char query[128]=""; int filtered=0,letter_pending=0; char letter='A';
     if(ac==4 && !strcmp(av[3],"--debug")) debug=1;
     else if(ac!=3){printf("Usage: %s http://PROXY:PORT TOKEN [--debug]\n",av[0]);return 2;}
     romm_amiga_set_debug(debug);
@@ -180,8 +197,33 @@ int main(int ac,char**av)
     if(SetMode(Input(),1)) raw=1;
 
     for(;;) {
-        if(v==V_PLATFORMS) drawp(&p,ps,ptop); else drawg(&g,gs,gtop,&d,g.total,off);
+        if(letter_pending && v==V_GAMES) {
+            draw_letter(letter);
+            /* WaitForChar uses microseconds. A new key restarts the 5s debounce. */
+            if(!WaitForChar(Input(),5000000)) {
+                romm_game_list_t ng={0};
+                letter_pending=0;
+                draw_loading(letter);
+                rc=romm_letter_games(&c,pid,letter,500,&ng);
+                if(!rc) {
+                    romm_game_free(&d);romm_game_list_free(&g);
+                    g=ng;gs=gtop=off=0;filtered=1;
+                    query[0]=letter;query[1]=0;
+                    if(g.count) rc=load_info(&c,&g,0,&d);
+                } else {
+                    romm_game_list_free(&ng);
+                    printf("Loading failed: %s\n",romm_strerror(rc));
+                    Delay(75);
+                }
+                continue;
+            }
+        } else if(v==V_PLATFORMS) drawp(&p,ps,ptop);
+        else drawg(&g,gs,gtop,&d,g.total,off);
         k=getkey(); if(k=='q'||k=='Q') break;
+        if(letter_pending && k!=KEY_LEFT && k!=KEY_RIGHT) {
+            /* Keep existing results until the user pauses on a letter. */
+            letter_pending=0;
+        }
         if(v==V_PLATFORMS) {
             if(k==KEY_UP && ps) { ps--; if(ps<ptop) ptop=ps; }
             else if(k==KEY_DOWN && ps+1<p.count) { ps++; if(ps>=ptop+PLATFORM_ROWS) ptop=ps-PLATFORM_ROWS+1; }
@@ -196,20 +238,8 @@ int main(int ac,char**av)
                 if(prompt_search(query,sizeof(query))){filtered=1;rc=search_page(&c,pid,query,&g,&d,&gs,&gtop,&off);}
             }
             else if(k==KEY_LEFT||k==KEY_RIGHT){
-                int step=(k==KEY_RIGHT?1:25), tries;
-                for(tries=0;tries<26;tries++) {
-                    romm_game_list_t ng={0};
-                    letter=(char)((letter-'A'+step)%26+'A');
-                    rc=romm_letter_games(&c,pid,letter,500,&ng);
-                    if(rc){romm_game_list_free(&ng);break;}
-                    if(ng.count){
-                        romm_game_free(&d);romm_game_list_free(&g);
-                        g=ng;gs=gtop=off=0;filtered=1;
-                        query[0]=letter;query[1]=0;
-                        rc=load_info(&c,&g,0,&d);break;
-                    }
-                    romm_game_list_free(&ng);
-                }
+                letter=(char)((letter-'A'+(k==KEY_RIGHT?1:25))%26+'A');
+                letter_pending=1;
             }
             else if((k=='d'||k=='D')&&d.fs_name){
                 cls();printf("RAW download %s...\n",d.fs_name);
