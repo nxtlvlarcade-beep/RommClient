@@ -143,38 +143,25 @@ static int load_info(romm_client_t *c,romm_game_list_t *g,size_t gs,romm_game_t 
     rc=romm_game_info(c,g->items[gs].id,d); return rc;
 }
 
-/* UnZip must be installed in C: or PATH. WHDLoad must be installed separately. */
+/* The helper performs extraction, confirmation, and WHDLoad launch. */
 static int whdload_game(romm_client_t *c,long id)
 {
-    char archive[80],folder[80],manifest[120],slave[256],cmd[650];
-    char *launcher=getenv("ROMM_LAUNCHER");
-    FILE *fp; size_t n; int rc;
-    if(!launcher||!*launcher)launcher="C:WHDLoad";
-    if(strchr(launcher,'"')||strchr(launcher,'\n'))return -1;
-    sprintf(archive,"romm-%ld-whdload.zip",id);
-    sprintf(folder,"romm-%ld",id);
-    sprintf(manifest,"%s/romm-launch.txt",folder);
-    sprintf(cmd,"/whdload/%ld",id);
-    puts("Requesting prepared WHDLoad package...");
-    rc=romm_download_file(c,cmd,archive);
+    char archive[80],url[80],cmd[512];
+    const char *helper=getenv("ROMM_COMMAND");
+    int rc;
+    if(!helper||!*helper)helper="romm-whdload";
+    if(strchr(helper,'"')||strchr(helper,'\n')||strchr(helper,'\r')){
+        puts("Unsafe ROMM_COMMAND");return -1;
+    }
+    snprintf(archive,sizeof(archive),"romm-%ld-whdload.zip",id);
+    snprintf(url,sizeof(url),"/whdload/%ld",id);
+    puts("Requesting WHDLoad package...");
+    rc=romm_download_file(c,url,archive);
     if(rc){printf("WHDLoad unavailable: %s\n",romm_strerror(rc));return -1;}
-    /* Numeric-only output directory and archive names are safe to quote. */
-    sprintf(cmd,"UnZip -o \"%s\" -d \"%s\"",archive,folder);
+    snprintf(cmd,sizeof(cmd),"\"%s\" \"%s\"",helper,archive);
     if(!Execute((STRPTR)cmd,0,0)){
-        puts("UnZip failed. Install UnZip in C: or PATH.");return -1;
+        puts("romm-whdload could not be started.");return -1;
     }
-    fp=fopen(manifest,"r");
-    if(!fp){puts("Missing WHDLoad manifest");return -1;}
-    if(!fgets(slave,sizeof(slave),fp)){fclose(fp);return -1;}
-    fclose(fp);
-    n=strcspn(slave,"\r\n");slave[n]=0;
-    /* Restrict manifest to a safe relative path; never execute arbitrary commands. */
-    if(!n||strstr(slave,"..")||strchr(slave,':')||strchr(slave,'"')||slave[0]=='/'||strchr(slave,'\\')){
-        puts("Unsafe slave path");return -1;
-    }
-    sprintf(cmd,"\"%s\" \"%s/%s\"",launcher,folder,slave);
-    printf("Starting %s\n",slave);
-    if(!Execute((STRPTR)cmd,0,0)){puts("WHDLoad launch failed");return -1;}
     return 0;
 }
 
@@ -227,7 +214,18 @@ int main(int ac,char**av)
             else if((k=='d'||k=='D')&&d.fs_name){
                 cls();printf("RAW download %s...\n",d.fs_name);
                 rc=romm_download_rom(&c,d.id,d.fs_name);
-                printf(rc?"Download failed: %s\n":"Downloaded: %s\n",rc?romm_strerror(rc):d.fs_name);Delay(75);
+                printf(rc?"Download failed: %s\n":"Downloaded: %s\n",rc?romm_strerror(rc):d.fs_name);
+                if(!rc){
+                    const char *action=getenv("ROMM_COMMAND");
+                    if(action&&*action&&d.fs_name&&strlen(d.fs_name)<240&&
+                       !strchr(action,'"')&&!strchr(action,'\n')&&!strchr(action,'\r')&&
+                       !strchr(d.fs_name,'"')&&!strchr(d.fs_name,'\n')&&!strchr(d.fs_name,'\r')){
+                        char command[512];
+                        snprintf(command,sizeof(command),"\"%s\" \"%s\"",action,d.fs_name);
+                        if(!Execute((STRPTR)command,0,0))puts("ROMM_COMMAND failed");
+                    }
+                }
+                Delay(75);
             }
             else if(k==KEY_UP) {
                 if(gs) { gs--; if(gs<gtop) gtop=gs; rc=load_info(&c,&g,gs,&d); }
