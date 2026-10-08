@@ -1,4 +1,3 @@
-groovy
 pipeline {
     agent { label 'dev-v1.0' }
 
