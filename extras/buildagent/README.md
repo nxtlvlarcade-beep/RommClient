@@ -1,28 +1,83 @@
-# ROMM Build-Agent
+# libromm Build-Agent
 
-Build-Agent für das ROMM-Client-Projekt.
+Docker-basierter Jenkins Inbound-Agent zum Kompilieren von libromm
+und nativen AmigaOS-3.x-Anwendungen.
 
-## Zweck
+## Komponenten
 
-Der Build-Agent unterstützt die Erstellung und Bereitstellung
-der Projekt-Binaries.
+- Jenkins Inbound-Agent (Java 21)
+- GCC / G++ / Make für Linux
+- Git und Build-Werkzeuge
+- libcurl-Entwicklungsbibliotheken
+- AmigaOS-m68k-Cross-Compiler
 
-## Konfiguration
+Der Cross-Compiler wird aus folgendem Projekt erstellt:
 
-Die benötigten Einstellungen richten sich nach der
-jeweiligen Build-Agent-Installation.
+https://github.com/AmigaPorts/m68k-amigaos-gcc
 
-Zugangsdaten, API-Tokens und SSH-Schlüssel dürfen nicht
-im Repository gespeichert werden.
+Installationsverzeichnis im Container:
 
-## Einrichtung
+    /opt/amiga
 
-1. Benötigte Build-Abhängigkeiten installieren.
-2. Build-Agent-Konfiguration erstellen.
-3. Repository und Build-Ziele konfigurieren.
-4. Agent starten.
-5. Build-Ergebnisse prüfen.
+Der Compiler-Pfad wird automatisch zu PATH hinzugefügt.
 
-Die konkreten Startbefehle und Konfigurationsvariablen
-müssen anhand der vorhandenen Agent-Implementierung
-ergänzt werden.
+## Docker-Image erstellen
+
+Vom Hauptverzeichnis des Repositorys:
+
+    docker build \
+      -f extras/buildagent/Dockerfile \
+      -t libromm-build-agent:v0.9 \
+      extras/buildagent
+
+Hinweis: Die Erstellung des Cross-Compilers kann längere Zeit dauern.
+
+## Jenkins-Konfiguration
+
+In Jenkins einen Agenten mit folgenden Eigenschaften erstellen:
+
+- Typ: Permanent Agent
+- Launch-Methode: Inbound Agent
+- Remote Root Directory: /home/jenkins/agent
+
+Den Agent-Namen und die Verbindungseinstellungen entsprechend
+der Jenkins-Installation konfigurieren.
+
+## Container starten
+
+Beispiel für einen Jenkins-Controller mit WebSocket-Unterstützung:
+
+    docker run -d \
+      --name libromm-build-agent \
+      --restart unless-stopped \
+      -e JENKINS_URL=https://jenkins.example.org/ \
+      -e JENKINS_AGENT_NAME=libromm-build-agent \
+      -e JENKINS_SECRET=YOUR_AGENT_SECRET \
+      libromm-build-agent:v0.9
+
+JENKINS_URL:
+Adresse des Jenkins-Controllers.
+
+JENKINS_AGENT_NAME:
+Name des in Jenkins konfigurierten Agents.
+
+JENKINS_SECRET:
+Verbindungs-Secret des Jenkins-Agents.
+
+Das Secret niemals in Git speichern.
+
+Für Jenkins-Verbindungen über WebSocket muss der Agent
+mit der entsprechenden WebSocket-Option gestartet werden.
+Die genaue Startkonfiguration hängt vom Jenkins-Controller ab.
+
+## Builds
+
+Der Agent kann Linux-Binaries und AmigaOS-m68k-Binaries
+erstellen, sofern die jeweiligen Makefiles und Abhängigkeiten
+für die Zielplattform eingerichtet sind.
+
+## Sicherheit
+
+- Jenkins-Secrets nicht ins Repository aufnehmen.
+- Agent-Zugriff auf vertrauenswürdige Jenkins-Controller begrenzen.
+- Container-Images regelmäßig aktualisieren.
