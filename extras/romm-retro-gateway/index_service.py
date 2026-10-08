@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 UPSTREAM = os.environ['ROMM_URL'].rstrip('/')
 TOKEN = os.environ['ROMM_TOKEN']
 TTL = max(60, int(os.getenv('ROMM_INDEX_TTL', '900')))
-PAGE = 250
+PAGE = 100
 MAX_ROMS = int(os.getenv('ROMM_INDEX_MAX_ROMS', '100000'))
 _cache = {}
 _lock = threading.Lock()
@@ -44,9 +44,12 @@ def platform_games(platform):
             if len(games) + len(batch) > MAX_ROMS:
                 raise ValueError('Platform exceeds ROMM_INDEX_MAX_ROMS')
             games.extend(batch)
-            total = len(payload) if isinstance(payload, list) else int(payload.get('total', len(games)))
-            if len(games) >= total:
+            total = None if isinstance(payload, list) else payload.get('total')
+            if total is not None and len(games) >= int(total):
                 break
+            if len(batch) < PAGE:
+                break
+        games.sort(key=lambda g: str(g.get('name') or g.get('fs_name') or '').casefold())
         _cache[platform] = (time.monotonic() + TTL, games)
         return games
 

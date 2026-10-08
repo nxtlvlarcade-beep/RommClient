@@ -208,24 +208,17 @@ int romm_search_games(romm_client_t*c,long platform_id,const char*text,
 }
 
 int romm_letter_games(romm_client_t*c,long pid,char letter,size_t limit,romm_game_list_t*out) {
-    char path[180], term[2]; char *json=NULL;int rc;size_t i,j=0;
+    char path[180]; char *json=NULL;int rc;
     if(!c||!out||pid<=0||letter<'A'||letter>'Z')return ROMM_ERR_ARGUMENT;
     if(!limit)limit=500;
     snprintf(path,sizeof(path),"/api/roms/index-search?platform_ids=%ld&limit=%lu&letter=%c",pid,(unsigned long)limit,letter);
     rc=romm_get_json(c,path,&json);
     if(rc==ROMM_OK){rc=parse_games_json(json,out);free(json);return rc;}
     free(json);
-    term[0]=letter;term[1]=0;
-    rc=romm_search_games(c,pid,term,limit,out);
-    if(rc)return rc;
-    for(i=0;i<out->count;i++) {
-        const char *name=out->items[i].name;
-        unsigned char ch=(unsigned char)(name&&*name?*name:0);
-        if(ch>='a'&&ch<='z')ch=(unsigned char)(ch-'a'+'A');
-        if(ch==letter) {if(j!=i){out->items[j]=out->items[i];memset(&out->items[i],0,sizeof(out->items[i]));}j++;}
-        else romm_game_free(&out->items[i]);
-    }
-    out->count=j;out->total=(long)j;return ROMM_OK;
+    /* Never search for a letter anywhere in a title: a prefix lookup must
+       be performed by the gateway over the entire platform index. */
+    return rc;
+
 }
 
 void romm_game_list_free(romm_game_list_t*l) {
