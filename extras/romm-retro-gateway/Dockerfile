@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY libromm/ ./
+COPY . ./
 RUN make clean && make romm-tui
 
 
@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd -r -u 10001 -d /downloads -s /usr/sbin/nologin retro
 
 COPY --from=builder /build/romm-tui /usr/local/bin/romm-tui
-COPY telnet_server.py /usr/local/bin/telnet_server.py
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY extras/romm-retro-gateway/telnet_server.py /usr/local/bin/telnet_server.py
+COPY extras/romm-retro-gateway/Caddyfile /etc/caddy/Caddyfile
 
 RUN mkdir -p /downloads \
     && chown retro:retro /downloads
