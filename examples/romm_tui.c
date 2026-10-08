@@ -10,12 +10,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 typedef enum { VIEW_PLATFORMS, VIEW_GAMES } view_t;
 static struct termios saved_term;
 static int raw_active=0;
 static void term_restore(void){if(raw_active){tcsetattr(STDIN_FILENO,TCSAFLUSH,&saved_term);raw_active=0;}printf("\033[?25h\033[0m\n");fflush(stdout);}
-static int term_raw(void){struct termios t;if(tcgetattr(STDIN_FILENO,&saved_term))return -1;t=saved_term;t.c_lflag&=(tcflag_t)~(ECHO|ICANON);t.c_iflag&=(tcflag_t)~(IXON|ICRNL);t.c_cc[VMIN]=1;t.c_cc[VTIME]=0;if(tcsetattr(STDIN_FILENO,TCSAFLUSH,&t))return -1;raw_active=1;atexit(term_restore);printf("\033[?25l");return 0;}
+static int term_raw(void){struct termios t;if(tcgetattr(STDIN_FILENO,&saved_term))return -1;t=saved_term;t.c_lflag&=(tcflag_t)~(ECHO|ICANON);t.c_iflag&=(tcflag_t)~(IXON|IXOFF|ICRNL|INLCR|IGNCR|ISTRIP);t.c_oflag&=(tcflag_t)~OPOST;t.c_cc[VMIN]=1;t.c_cc[VTIME]=0;if(tcsetattr(STDIN_FILENO,TCSAFLUSH,&t))return -1;raw_active=1;atexit(term_restore);printf("\033[?25l");return 0;}
 static void dims(int *rows,int *cols){struct winsize w;if(!ioctl(STDOUT_FILENO,TIOCGWINSZ,&w)&&w.ws_row&&w.ws_col){*rows=w.ws_row;*cols=w.ws_col;}else{*rows=24;*cols=80;}}
 static int key(void){unsigned char c;if(read(STDIN_FILENO,&c,1)!=1)return -1;if(c==27){unsigned char a,b;if(read(STDIN_FILENO,&a,1)!=1)return 27;if(a=='['&&read(STDIN_FILENO,&b,1)==1){if(b=='A')return 1001;if(b=='B')return 1002;if(b=='C')return 1003;if(b=='D')return 1004;}return 27;}if(c=='\r'||c=='\n')return 13;return c;}
 static int exists(const char*p){struct stat st;return p&&*p&&!stat(p,&st)&&S_ISREG(st.st_mode);}
@@ -23,7 +24,55 @@ static void clip(const char*s,int width){int n=0;if(!s)s="";while(*s&&n<width){u
 static void field(int row,int col,int width,const char *label,const char *value){printf("\033[%d;%dH",row,col);printf("%-10s",label);clip(value,width-10);}
 static void wrap(int row,int col,int width,int maxrows,const char*s){int r=0,n=0;if(!s)s="";while(*s&&r<maxrows){printf("\033[%d;%dH",row+r,col);n=0;while(*s&&n<width){if(*s=='\r'){s++;continue;}if(*s=='\n'){s++;break;}putchar((unsigned char)*s++);n++;}while(n++<width)putchar(' ');r++;}while(r<maxrows){printf("\033[%d;%dH",row+r,col);for(n=0;n<width;n++)putchar(' ');r++;}}
 static void launch_file(const char *path,char *status,size_t cap){const char*launcher=getenv("ROMM_LAUNCHER");pid_t p;if(!launcher||!*launcher){snprintf(status,cap,"Downloaded. Set ROMM_LAUNCHER to start games.");return;}p=fork();if(p==0){execlp(launcher,launcher,path,(char*)NULL);_exit(127);}if(p<0)snprintf(status,cap,"Could not start launcher");else{snprintf(status,cap,"Started: %s %s",launcher,path);waitpid(p,NULL,WNOHANG);}}
+/* ZMODEM uses the existing PTY. sz must be installed in the container. */
+static int send_zmodem(const char *path,char *status,size_t cap){
+    pid_t pid;int st=0;struct termios before,t;
+    if(!path||!*path)return -1;
+    fflush(stdout);
+    if(tcgetattr(STDIN_FILENO,&before)!=0){snprintf(status,cap,"No terminal for ZMODEM");return -1;}
+    t=before;
+    t.c_iflag&=(tcflag_t)~(IXON|IXOFF|ICRNL|INLCR|IGNCR|ISTRIP|BRKINT|PARMRK);
+    t.c_oflag&=(tcflag_t)~OPOST;
+    t.c_lflag&=(tcflag_t)~(ECHO|ICANON|ISIG|IEXTEN);
+    t.c_cflag|=CS8;
+    t.c_cc[VMIN]=1;t.c_cc[VTIME]=0;
+    if(tcsetattr(STDIN_FILENO,TCSANOW,&t)!=0){snprintf(status,cap,"Cannot set binary terminal");return -1;}
+    pid=fork();
+    if(pid==0){execlp("sz","sz","--binary","--",path,(char*)NULL);_exit(127);}
+    if(pid<0){tcsetattr(STDIN_FILENO,TCSANOW,&before);snprintf(status,cap,"Cannot start sz");return -1;}
+    while(waitpid(pid,&st,0)<0){if(errno!=EINTR){st=-1;break;}}
+    tcsetattr(STDIN_FILENO,TCSAFLUSH,&before);
+    if(st!=-1&&WIFEXITED(st)&&WEXITSTATUS(st)==0){snprintf(status,cap,"ZMODEM transfer complete");return 0;}
+    if(st!=-1&&WIFEXITED(st)&&WEXITSTATUS(st)==127)snprintf(status,cap,"sz missing: install lrzsz in Docker image");
+    else snprintf(status,cap,"ZMODEM failed (check DCTelnet receive)");
+    return -1;
+}
+static const char *safe_name(const char *name){
+    const char *p,*base=name;
+    if(!name)return NULL;
+    for(p=name;*p;p++)if(*p=='/'||*p=='\\')base=p+1;
+    if(!*base||!strcmp(base,".")||!strcmp(base,".."))return NULL;
+    return base;
+}
 static int load_detail(romm_client_t*c,const romm_game_list_t*g,size_t sel,romm_game_t*d,char*status,size_t cap){int rc;romm_game_free(d);rc=romm_game_info(c,g->items[sel].id,d);if(rc)snprintf(status,cap,"Info error: %s",romm_strerror(rc));return rc;}
 static void draw(view_t view,const romm_platform_list_t*p,size_t ps,const romm_game_list_t*g,size_t gs,size_t offset,const romm_game_t*d,const char*status){int rows,cols,left,right,start=3,visible,i;dims(&rows,&cols);left=cols/2;if(left<28)left=28;if(left>42)left=42;right=cols-left-3;visible=rows-6;if(visible<5)visible=5;printf("\033[2J\033[H");printf("libromm 0.6  %s",view==VIEW_PLATFORMS?"PLATFORMS":"GAMES");printf("\033[2;%dH| DETAILS",left+2);for(i=0;i<visible;i++){size_t idx=(view==VIEW_PLATFORMS?ps:gs);size_t base=idx>=(size_t)visible?idx-(size_t)visible+1:0;size_t n=base+(size_t)i;printf("\033[%d;1H",start+i);if(view==VIEW_PLATFORMS){if(n<p->count){if(n==ps)printf("\033[7m");printf("%c %5ld ",n==ps?'>':' ',p->items[n].rom_count);clip(p->items[n].display_name,left-9);if(n==ps)printf("\033[0m");}else clip("",left);}else{if(n<g->count){if(n==gs)printf("\033[7m");printf("%c %6ld ",n==gs?'>':' ',g->items[n].id);clip(g->items[n].name,left-10);if(n==gs)printf("\033[0m");}else clip("",left);}printf("\033[%d;%dH|",start+i,left+1);}if(view==VIEW_PLATFORMS&&p->count){char b[64];const romm_platform_t*x=&p->items[ps];field(3,left+3,right,"Platform",x->display_name);snprintf(b,sizeof(b),"%ld",x->rom_count);field(4,left+3,right,"Games",b);field(5,left+3,right,"Category",x->category);}else if(view==VIEW_GAMES&&g->count){char b[128];field(3,left+3,right,"Name",d->name);field(4,left+3,right,"Platform",d->platform_display_name);field(5,left+3,right,"File",d->fs_name);snprintf(b,sizeof(b),"%llu bytes",d->fs_size_bytes);field(6,left+3,right,"Size",b);field(7,left+3,right,"Genres",d->genres);field(8,left+3,right,"Developer",d->developers);field(9,left+3,right,"Publisher",d->publishers);field(10,left+3,right,"Region",d->regions);if(d->average_rating>0.0)snprintf(b,sizeof(b),"%.1f",d->average_rating);else strcpy(b,"-");field(11,left+3,right,"Rating",b);wrap(13,left+3,right,rows-17,d->summary);}printf("\033[%d;1H",rows-2);for(i=0;i<cols;i++)putchar('-');printf("\033[%d;1H",rows-1);if(view==VIEW_PLATFORMS)printf("Up/Down select   Enter games   Q quit");else printf("Up/Down select   Enter download/start   Esc back   Pg: %lu",(unsigned long)offset);printf("\033[%d;1H",rows);clip(status,cols);fflush(stdout);}
-int main(int ac,char**av){romm_client_t c;romm_transport_t t=romm_curl_transport();romm_platform_list_t p={0};romm_game_list_t g={0};romm_game_t d={0};view_t view=VIEW_PLATFORMS;size_t ps=0,gs=0,offset=0;long pid=0;int rc,k;char status[256]="Ready";if(ac!=3){fprintf(stderr,"Usage: %s BASE_URL TOKEN\n",av[0]);return 2;}rc=romm_client_init(&c,av[1],av[2],t);if(rc)return 1;rc=romm_platforms(&c,&p);if(rc){fprintf(stderr,"platforms: %s\n",romm_strerror(rc));romm_client_destroy(&c);return 1;}if(term_raw()){fprintf(stderr,"terminal raw mode failed\n");romm_platform_list_free(&p);romm_client_destroy(&c);return 1;}for(;;){draw(view,&p,ps,&g,gs,offset,&d,status);k=key();if(k=='q'||k=='Q')break;if(view==VIEW_PLATFORMS){if(k==1001&&ps>0)ps--;else if(k==1002&&ps+1<p.count)ps++;else if(k==13&&p.count){pid=p.items[ps].id;offset=0;romm_game_list_free(&g);rc=romm_games(&c,pid,100,offset,&g);if(rc){snprintf(status,sizeof(status),"Games error: %s",romm_strerror(rc));continue;}if(!g.count){snprintf(status,sizeof(status),"No games on %s",p.items[ps].display_name);continue;}gs=0;view=VIEW_GAMES;snprintf(status,sizeof(status),"%ld games total",g.total);load_detail(&c,&g,gs,&d,status,sizeof(status));}}else{if(k==27){view=VIEW_PLATFORMS;romm_game_list_free(&g);romm_game_free(&d);snprintf(status,sizeof(status),"Back to platforms");}else if(k==1001){if(gs>0){gs--;load_detail(&c,&g,gs,&d,status,sizeof(status));}else if(offset>=100){offset-=100;romm_game_list_free(&g);if(!romm_games(&c,pid,100,offset,&g)&&g.count){gs=g.count-1;load_detail(&c,&g,gs,&d,status,sizeof(status));}}}else if(k==1002){if(gs+1<g.count){gs++;load_detail(&c,&g,gs,&d,status,sizeof(status));}else if(offset+g.count<(size_t)g.total){offset+=g.count;romm_game_list_free(&g);if(!romm_games(&c,pid,100,offset,&g)&&g.count){gs=0;load_detail(&c,&g,gs,&d,status,sizeof(status));}}}else if(k==13&&g.count){if(!d.fs_name||!*d.fs_name){snprintf(status,sizeof(status),"No downloadable file");}else if(exists(d.fs_name)){launch_file(d.fs_name,status,sizeof(status));}else{snprintf(status,sizeof(status),"Downloading %s ...",d.fs_name);draw(view,&p,ps,&g,gs,offset,&d,status);rc=romm_download_rom(&c,d.id,d.fs_name);if(rc)snprintf(status,sizeof(status),"Download failed: %s",romm_strerror(rc));else snprintf(status,sizeof(status),"Downloaded %s - Enter again to start",d.fs_name);}}}}
+int main(int ac,char**av){romm_client_t c;romm_transport_t t=romm_curl_transport();romm_platform_list_t p={0};romm_game_list_t g={0};romm_game_t d={0};view_t view=VIEW_PLATFORMS;size_t ps=0,gs=0,offset=0;long pid=0;int rc,k;char status[256]="Ready";if(ac!=3){fprintf(stderr,"Usage: %s BASE_URL TOKEN\n",av[0]);return 2;}rc=romm_client_init(&c,av[1],av[2],t);if(rc)return 1;rc=romm_platforms(&c,&p);if(rc){fprintf(stderr,"platforms: %s\n",romm_strerror(rc));romm_client_destroy(&c);return 1;}if(term_raw()){fprintf(stderr,"terminal raw mode failed\n");romm_platform_list_free(&p);romm_client_destroy(&c);return 1;}for(;;){draw(view,&p,ps,&g,gs,offset,&d,status);k=key();if(k=='q'||k=='Q')break;if(view==VIEW_PLATFORMS){if(k==1001&&ps>0)ps--;else if(k==1002&&ps+1<p.count)ps++;else if(k==13&&p.count){pid=p.items[ps].id;offset=0;romm_game_list_free(&g);rc=romm_games(&c,pid,100,offset,&g);if(rc){snprintf(status,sizeof(status),"Games error: %s",romm_strerror(rc));continue;}if(!g.count){snprintf(status,sizeof(status),"No games on %s",p.items[ps].display_name);continue;}gs=0;view=VIEW_GAMES;snprintf(status,sizeof(status),"%ld games total",g.total);load_detail(&c,&g,gs,&d,status,sizeof(status));}}else{if(k==27){view=VIEW_PLATFORMS;romm_game_list_free(&g);romm_game_free(&d);snprintf(status,sizeof(status),"Back to platforms");}else if(k==1001){if(gs>0){gs--;load_detail(&c,&g,gs,&d,status,sizeof(status));}else if(offset>=100){offset-=100;romm_game_list_free(&g);if(!romm_games(&c,pid,100,offset,&g)&&g.count){gs=g.count-1;load_detail(&c,&g,gs,&d,status,sizeof(status));}}}else if(k==1002){if(gs+1<g.count){gs++;load_detail(&c,&g,gs,&d,status,sizeof(status));}else if(offset+g.count<(size_t)g.total){offset+=g.count;romm_game_list_free(&g);if(!romm_games(&c,pid,100,offset,&g)&&g.count){gs=0;load_detail(&c,&g,gs,&d,status,sizeof(status));}}}else if(k==13&&g.count){const char *name=safe_name(d.fs_name);int zmode=getenv("ROMM_ZMODEM")!=NULL;
+if(!name){snprintf(status,sizeof(status),"No safe downloadable filename");}
+else if(zmode){
+    char path[1024];
+    if(snprintf(path,sizeof(path),"/downloads/%ld-%s",d.id,name)>=(int)sizeof(path)){snprintf(status,sizeof(status),"Filename too long");}
+    else{
+        if(!exists(path)){
+            snprintf(status,sizeof(status),"Downloading %s ...",name);
+            draw(view,&p,ps,&g,gs,offset,&d,status);
+            rc=romm_download_rom(&c,d.id,path);
+            if(rc){snprintf(status,sizeof(status),"Download failed: %s",romm_strerror(rc));continue;}
+        }
+        snprintf(status,sizeof(status),"Start ZMODEM receive in DCTelnet...");
+        draw(view,&p,ps,&g,gs,offset,&d,status);
+        send_zmodem(path,status,sizeof(status));
+    }
+}
+else if(exists(name)){launch_file(name,status,sizeof(status));}
+else{snprintf(status,sizeof(status),"Downloading %s ...",name);draw(view,&p,ps,&g,gs,offset,&d,status);rc=romm_download_rom(&c,d.id,name);if(rc)snprintf(status,sizeof(status),"Download failed: %s",romm_strerror(rc));else snprintf(status,sizeof(status),"Downloaded %s - Enter again to start",name);}}}}
 romm_game_free(&d);romm_game_list_free(&g);romm_platform_list_free(&p);romm_client_destroy(&c);term_restore();return 0;}
