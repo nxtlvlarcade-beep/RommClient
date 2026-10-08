@@ -69,7 +69,7 @@ def session(conn):
     if pid == 0:
         os.chdir('/downloads')
         os.environ['ROMM_ZMODEM'] = '1'
-        os.execv('/usr/local/bin/romm-tui', ['romm-tui', URL, TOKEN])
+        os.execv('/usr/local/bin/romm-tui', ['romm-tui', 'http://127.0.0.1:8080', TOKEN])
     decoder = Decoder(master)
     conn.settimeout(None)
     try:

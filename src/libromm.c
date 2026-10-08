@@ -162,6 +162,26 @@ int romm_search_games(romm_client_t*c,long platform_id,const char*text,
     if(!c||!text||!out||platform_id<=0)return ROMM_ERR_ARGUMENT;
     memset(out,0,sizeof(*out));
     if(limit==0)limit=50;
+    /* Gateway index-search avoids rescanning every RomM page on each keypress.
+       Ordinary RomM servers return 404; retain the original fallback. */
+    {
+        char path[512], *json=NULL;
+        size_t k=0; const unsigned char *q=(const unsigned char *)text;
+        int n=snprintf(path,sizeof(path),"/api/roms/index-search?platform_ids=%ld&limit=%lu&q=",platform_id,(unsigned long)limit);
+        if(n>0 && (size_t)n<sizeof(path)) {
+            k=(size_t)n;
+            while(*q && k+4<sizeof(path)) {
+                unsigned char ch=*q++;
+                if((ch>='A'&&ch<='Z')||(ch>='a'&&ch<='z')||(ch>='0'&&ch<='9')||ch=='-'||ch=='_') path[k++]=(char)ch;
+                else {static const char hex[]="0123456789ABCDEF";path[k++]='%';path[k++]=hex[ch>>4];path[k++]=hex[ch&15];}
+            }
+            path[k]=0;
+            if(!*q && romm_get_json(c,path,&json)==ROMM_OK) {
+                rc=parse_games_json(json,out);free(json);return rc;
+            }
+            free(json);
+        }
+    }
     for(;;) {
         rc=romm_games(c,platform_id,page_size,offset,&page);
         if(rc){romm_game_list_free(out);return rc;}
@@ -185,6 +205,20 @@ int romm_search_games(romm_client_t*c,long platform_id,const char*text,
     }
     out->total=(long)out->count;
     return ROMM_OK;
+}
+
+int romm_letter_games(romm_client_t*c,long pid,char letter,size_t limit,romm_game_list_t*out) {
+    char path[180]; char *json=NULL;int rc;
+    if(!c||!out||pid<=0||letter<'A'||letter>'Z')return ROMM_ERR_ARGUMENT;
+    if(!limit)limit=500;
+    snprintf(path,sizeof(path),"/api/roms/index-search?platform_ids=%ld&limit=%lu&letter=%c",pid,(unsigned long)limit,letter);
+    rc=romm_get_json(c,path,&json);
+    if(rc==ROMM_OK){rc=parse_games_json(json,out);free(json);return rc;}
+    free(json);
+    /* Never search for a letter anywhere in a title: a prefix lookup must
+       be performed by the gateway over the entire platform index. */
+    return rc;
+
 }
 
 void romm_game_list_free(romm_game_list_t*l) {

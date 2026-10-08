@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wget \
         ca-certificates \
         pkg-config \
+        python3 \
         libcurl4-openssl-dev \
         file \
         autoconf \

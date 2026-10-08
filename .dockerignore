@@ -1,9 +1,10 @@
 .git
-.gitignore
+*.o
+*.a
+romm-tui
+romm-amiga
+build-amiga
 .env
 .env.*
 !.env.example
-**/__pycache__
-**/*.pyc
-**/*.log
-downloads/
+__pycache__

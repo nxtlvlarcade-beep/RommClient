@@ -53,6 +53,8 @@ int romm_games(romm_client_t *client, long platform_id,
                size_t limit, size_t offset, romm_game_list_t *out);
 int romm_search_games(romm_client_t *client, long platform_id,
                       const char *text, size_t limit, romm_game_list_t *out);
+int romm_letter_games(romm_client_t *client, long platform_id, char letter,
+                      size_t limit, romm_game_list_t *out);
 void romm_game_list_free(romm_game_list_t *list);
 
 int romm_game_info(romm_client_t *client, long rom_id, romm_game_t *out);

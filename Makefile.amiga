@@ -21,5 +21,5 @@ build-amiga/romm_amiga.o: examples/romm_amiga.c | build-amiga
 romm-amiga: $(CORE_OBJ) $(AMIGA_OBJ)
 	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) $(AMIGA_OBJ)
 clean:
-	rm -rf build-amiga romm-amiga
+	rm -rf build-amiga romm-amiga romm-whdload
 .PHONY: all clean

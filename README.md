@@ -119,3 +119,66 @@ Weitere Informationen:
 
 0.9 – Integration des Retro-Gateways und des Build-Agents,
 mit optionalem ZMODEM-Support.
+
+## v1.0 WHDLoad workflow (experimental)
+
+- `D` downloads the original ROM unchanged.
+- `Enter` requests `/whdload/<rom-id>` from the retro gateway.
+- The gateway accepts archives that contain **exactly one `.slave` file**, checks
+  archive paths, extracts with `bsdtar`, and packages the files as a ZIP with
+  `romm-launch.txt`. It does **not** convert ADF/IPF into WHDLoad.
+- Telnet transfers the prepared ZIP using ZMODEM. Extract it on the Amiga and
+  launch its `.slave` with WHDLoad.
+- Native Amiga downloads the prepared ZIP, runs `UnZip -o ... -d ...`, reads
+  `romm-launch.txt` and invokes `ROMM_LAUNCHER` (default `C:WHDLoad`).
+- Install **UnZip** and **WHDLoad** on the Amiga; verify the game requires no
+  additional Kickstart ROM or game-specific installer.
+- The gateway requires `ROMM_URL` and `ROMM_TOKEN`. Do not expose the
+  unauthenticated Telnet service or the proxy directly to the public Internet.
+- **Experimental:** runtime behavior must be validated on real AmigaOS 3.1.
+
+
+## AmigaOS romm-whdload helper (experimental)
+
+`make -f Makefile.amiga` now builds `romm-amiga` and `romm-whdload`.
+Install `romm-whdload` in `C:` or your AmigaOS command search path.
+For native downloads, set the Amiga environment variable
+`ROMM_COMMAND=romm-whdload` (e.g. `SetEnv ROMM_COMMAND C:romm-whdload`).
+The native client's Enter key invokes this helper on a prepared WHDLoad ZIP.
+The D key continues to download RAW files and optionally invokes `ROMM_COMMAND`
+with the downloaded filename when configured.
+
+Usage: `romm-whdload "Work:Downloads/game.zip"` or
+`romm-whdload "Work:Downloads/game.adf"`.
+The helper confirms extraction and launch, reads `romm-launch.txt`, and
+requires an actual `.slave` in the extracted package. ADF/IPF conversion is
+**not automatic**: `ROMM_WHD_INSTALLER` can name an existing game-specific
+AmigaOS installer wrapper accepting `<disk-image> <output-folder>` and writing
+`romm-launch.txt` plus installed data. Optional `ROMM_ADF_MOUNTER` can name
+an ADF mounting command. No reset is performed automatically.
+
+Telnet/ZMODEM currently sends the file to the receiving Amiga application.
+`ROMM_COMMAND` must be configured on that Amiga's **receiving side** to invoke
+`romm-whdload` with the saved local path. The Linux Telnet server cannot
+execute an AmigaOS binary; this repository does not yet implement a receiver
+hook, so fully automatic post-ZMODEM invocation is not available yet.
+Only extract ZIPs obtained from a trusted gateway: external `UnZip` may not
+protect against malicious archive entries.
+
+### WHDLoad online installer lookup (experimental)
+
+The gateway `/whdload/<rom_id>` now first checks for an already-installed
+`.slave` archive. For other ROM content (including ADF/IPF), it searches the
+**official WHDLoad game index** by normalized RomM title, requires exactly one
+matching game page and current LHA installer, and downloads that installer over
+HTTPS. It returns a ZIP containing `installer.lha` and `romm-installer.txt`.
+No RomM token is sent to whdload.de.
+
+On AmigaOS, `romm-whdload` extracts the ZIP with `C:UnZip`, recognizes the
+installer package, asks permission, and extracts the LHA with `C:LhA`.
+Then run the game-specific installer in Workbench with the matching original
+disk mounted. **This does not automatically convert ADF/IPF or launch an
+uninstalled game**. A title match is not proof of disk-version compatibility.
+The GitHub slave sources are not downloadable ready-to-run installers and are
+not automatically compiled. A working internet connection from the gateway,
+`C:UnZip`, `C:LhA`, WHDLoad and installer prerequisites are required.
