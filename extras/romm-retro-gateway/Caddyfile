@@ -1,0 +1,18 @@
+:8080 {
+    log {
+        output stdout
+        format console
+    }
+
+    handle /api/* {
+        reverse_proxy https://play.next-level.fun {
+            header_up Host play.next-level.fun
+            header_up Authorization "Bearer {$ROMM_TOKEN}"
+            header_up Accept application/json
+        }
+    }
+
+    handle {
+        respond "Not found" 404
+    }
+}

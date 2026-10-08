@@ -1,109 +1,121 @@
-# libromm 0.5
+# ROMM Client v0.9
 
-Portable C99 ROMM client core plus libcurl transport and two frontends.
+ROMM-Client-Projekt für klassische Amiga-Systeme und Retro-Computer.
 
-## New in 0.5
+Das Projekt unterstützt zwei Betriebsarten:
 
-- `romm_game_t` detail metadata: summary, genres, developers, publishers, modes,
-  regions, file size, release timestamp, rating, manual/multi-file flags and cover paths.
-- `romm-cli info ROM_ID` prints the game description and metadata.
-- `romm-tui`: ANSI/POSIX interactive two-column frontend.
-  - Up/Down: selection
-  - Enter on platform: open games
-  - Enter on game: download using original ROM filename
-  - Enter again when downloaded: launch via `ROMM_LAUNCHER`
-  - Esc: games -> platforms
-  - Q: quit
-- Games are fetched in pages of 100 rather than loading a whole platform at once.
+1. Proxy-/Gateway-Modus
+2. Nativer Amiga-m68k-Modus
 
-The TUI is deliberately outside `libromm`: the core remains GUI/terminal independent
-for future AmigaOS 3.x, MorphOS and other frontends.
+## 1. Proxy-/Gateway-Modus
 
-## Build
+Im Gateway-Modus läuft die ROMM-Anwendung auf einem Linux-Server
+beziehungsweise in einem Docker-Container.
 
-    make clean && make
+Der Amiga verbindet sich über einen Telnet-Client mit dem Gateway.
 
-## CLI
+Das Gateway übernimmt:
 
-    ./romm-cli BASE_URL TOKEN info 81444
+- Verbindung zur ROMM-API
+- Authentifizierung mit ROMM-API-Token
+- Auflisten von Plattformen und Spielen
+- Anzeigen von Spielinformationen
+- Herunterladen von ROM-Dateien
+- Optionale ZMODEM-Übertragung zum Amiga
 
-## TUI
+### Einrichtung
 
-    ./romm-tui BASE_URL TOKEN
+Siehe:
 
-Optional launcher example on Linux:
+    extras/romm-retro-gateway/README.md
 
-    export ROMM_LAUNCHER=/usr/bin/xdg-open
-    ./romm-tui BASE_URL TOKEN
+Die Konfiguration erfolgt über eine .env-Datei.
 
-For an emulator, point `ROMM_LAUNCHER` at a wrapper executable/script that accepts the
-downloaded ROM path as its first argument. This launcher hook is frontend-specific and
-will later be replaced by an Amiga/MorphOS launcher backend.
+Wichtige Variablen:
 
-## 0.7: AmigaOS 3.x / 68020 experimental port
+    ROMM_URL=https://play.next-level.fun
+    ROMM_TOKEN=YOUR_ROMM_API_TOKEN
+    ROMM_ZMODEM=1
+    TELNET_PORT=2323
 
-This release adds an experimental native AmigaOS 3.x frontend (`romm-amiga`) and an
-HTTP-only `bsdsocket.library` transport. The portable libromm core remains shared with
-the host build.
+Der API-Token darf nicht in Git eingecheckt werden.
 
-### Cross build
+## 2. Nativer Amiga-m68k-Modus
 
-A GCC AmigaOS cross toolchain that provides `m68k-amigaos-gcc`, NDK headers and
-bsdsocket/AmiTCP-compatible headers is required:
+Im nativen Modus läuft `romm-amiga` direkt unter AmigaOS.
 
-    make -f Makefile.amiga clean
-    make -f Makefile.amiga
+Voraussetzungen:
 
-Default CPU target is 68020 (`-m68020`), suitable as a baseline for an accelerated
-A1200. Override `CFLAGS` if required.
+- AmigaOS 3.x
+- TCP/IP-Stack, beispielsweise Roadshow
+- Netzwerkzugriff auf einen geeigneten HTTP-Proxy
+- ROMM-Server mit API-Token
 
-### Network model
+Der native Client benötigt kein Telnet-Gateway.
 
-`romm-amiga` deliberately supports `http://` only. Use it only on a trusted LAN and
-place a small HTTP reverse proxy in front of the HTTPS ROMM server. The proxy must
-forward `/api/...` and download requests to ROMM. Do not expose that plaintext proxy
-to an untrusted network.
+Er kommuniziert über den konfigurierten HTTP-Proxy mit ROMM.
 
-    romm-amiga http://192.168.0.20:8088 TOKEN
+### HTTP-Proxy
 
-The bearer token is still supplied on the command line in this experimental release.
-A later revision should read it from a config/environment source so it is not exposed
-in command history/process arguments.
+Der Proxy übernimmt die Verbindung zum ROMM-Server
+und fügt den erforderlichen Authorization-Header hinzu.
 
-### Controls
+Beispiel:
 
-- Up/Down: select platform/game
-- Return: open platform / download game
-- Esc: games -> platforms
-- Q: quit
+    Authorization: Bearer YOUR_ROMM_API_TOKEN
 
-The frontend accepts both the Amiga CSI byte (0x9b) and ANSI ESC-[ arrow sequences.
-Game descriptions come from the ROMM `summary` field already parsed by libromm 0.5+.
+Der API-Token wird serverseitig konfiguriert und muss nicht
+auf dem Amiga gespeichert werden.
 
-### Important 0.7 limitation
+Der Proxy muss ROMM-API-Anfragen und Downloads korrekt
+weiterleiten.
 
-The initial Amiga transport buffers an HTTP response before writing a download. This
-keeps the first native transport small enough to validate networking and API behavior,
-but is NOT the final low-memory A1200 download implementation. The next transport
-revision should stream the response body directly to disk and handle HTTP/1.1 chunked
-encoding. The host libcurl backend already streams downloads.
+### Start
 
-### 0.7
-Diagnostic Amiga build for the observed 68020 Address Error. It adds trace markers,
-uses the correct already-prefixed Authorization value, checks recv() failures and
-request truncation, bounds response growth, and uses debug symbols with -O0.
+Den für AmigaOS erzeugten m68k-Build auf den Amiga kopieren.
 
+Den HTTP-Proxy entsprechend der verwendeten Client-Version
+konfigurieren und `romm-amiga` starten.
 
-## 0.7 Amiga transport changes
+Die genauen Startparameter hängen vom jeweiligen Build ab.
 
-- Hardened receive-buffer arithmetic against `size_t` overflow.
-- Checks negative `recv()` results instead of accepting partial responses.
-- Validates request truncation and DNS address length.
-- Metadata responses use one allocation: HTTP headers are removed in-place with `memmove()`.
-- ROM downloads stream directly to disk instead of buffering the complete ROM in RAM.
-- 64 KiB receive progress messages make slow classic-Amiga transfers observable.
-- Keeps the Roadshow/SANA-II compatible `bsdsocket.library` transport; HTTPS remains intentionally unsupported on Amiga.
+## 3. Bibliothek libromm
 
-## CI artifacts (0.7 corrected)
+Die gemeinsame C-Bibliothek bildet die Grundlage für
+die unterschiedlichen Clients.
 
-The Jenkins pipeline builds and archives both Linux frontends (`romm-cli`, `romm-tui`) and the AmigaOS 68k frontend (`romm-amiga`). The Amiga build is always invoked explicitly with `make -f Makefile.amiga all` and uses `/opt/amiga/bin` in `PATH`.
+Der Linux-TUI-Client befindet sich unter:
+
+    examples/romm_tui.c
+
+Die ZMODEM-Funktion ist optional und wird über
+ROMM_ZMODEM aktiviert.
+
+## 4. Repository-Struktur
+
+    include/                     Öffentliche Header
+    src/                         Bibliotheksquellen
+    examples/                    Beispielprogramme und TUI
+    extras/romm-retro-gateway/   Docker-/Telnet-Gateway
+    extras/buildagent/           Build-Agent
+
+## 5. Build-Agent
+
+Der Build-Agent unterstützt die Erstellung der Projekt-Binaries.
+
+Weitere Informationen:
+
+    extras/buildagent/README.md
+
+## 6. Sicherheit
+
+- API-Tokens niemals in Git speichern.
+- Echte .env-Dateien nicht veröffentlichen.
+- HTTP-Proxies und Telnet nur in vertrauenswürdigen
+  Netzwerken oder hinter geeigneten Schutzmechanismen betreiben.
+- Für öffentlich erreichbare Dienste TLS und Zugriffsschutz verwenden.
+
+## Version
+
+0.9 – Integration des Retro-Gateways und des Build-Agents,
+mit optionalem ZMODEM-Support.
