@@ -245,8 +245,6 @@ int main(int ac,char**av)
                 rc=romm_download_rom(&c,d.id,d.fs_name);
                 printf(rc?"Download failed: %s\n":"Downloaded: %s\n",rc?romm_strerror(rc):d.fs_name);
                 }
-                Delay(75);
-            }
             else if(k==KEY_UP) {
                 if(gs) { gs--; if(gs<gtop) gtop=gs; rc=load_info(&c,&g,gs,&d); }
                 else if(!filtered&&off>=PAGE_GAMES) {
