@@ -33,7 +33,7 @@ Die Konfiguration erfolgt über eine .env-Datei.
 
 Wichtige Variablen:
 
-    ROMM_URL=https://play.next-level.fun
+    ROMM_URL=YOUR_ROMM_URL
     ROMM_TOKEN=YOUR_ROMM_API_TOKEN
     ROMM_ZMODEM=1
     TELNET_PORT=2323
