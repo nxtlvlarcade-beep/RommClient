@@ -6,7 +6,7 @@ CPPFLAGS += -Iinclude -Isrc
 CORE_OBJ = build-amiga/libromm.o build-amiga/minijson.o
 AMIGA_OBJ = build-amiga/transport_amiga.o build-amiga/romm_amiga.o
 
-all: romm-amiga romm-whdload
+all: romm-amiga
 
 build-amiga:
 	mkdir -p $@
@@ -20,10 +20,6 @@ build-amiga/romm_amiga.o: examples/romm_amiga.c | build-amiga
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 romm-amiga: $(CORE_OBJ) $(AMIGA_OBJ)
 	$(CC) $(CFLAGS) -o $@ $(CORE_OBJ) $(AMIGA_OBJ)
-build-amiga/romm_whdload.o: examples/romm_whdload.c | build-amiga
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-romm-whdload: build-amiga/romm_whdload.o
-	$(CC) $(CFLAGS) -o $@ $<
 clean:
 	rm -rf build-amiga romm-amiga romm-whdload
 .PHONY: all clean

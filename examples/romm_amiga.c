@@ -163,22 +163,21 @@ static int load_info(romm_client_t *c,romm_game_list_t *g,size_t gs,romm_game_t 
 /* The helper performs extraction, confirmation, and WHDLoad launch. */
 static int whdload_game(romm_client_t *c,long id)
 {
-    char archive[80],url[80],cmd[512];
-    const char *helper=getenv("ROMM_COMMAND");
+    char archive[80],url[80];
     int rc;
-    if(!helper||!*helper)helper="romm-whdload";
-    if(strchr(helper,'"')||strchr(helper,'\n')||strchr(helper,'\r')){
-        puts("Unsafe ROMM_COMMAND");return -1;
-    }
+
     snprintf(archive,sizeof(archive),"romm-%ld-whdload.zip",id);
     snprintf(url,sizeof(url),"/whdload/%ld",id);
+
     puts("Requesting WHDLoad package...");
     rc=romm_download_file(c,url,archive);
-    if(rc){printf("WHDLoad unavailable: %s\n",romm_strerror(rc));return -1;}
-    snprintf(cmd,sizeof(cmd),"\"%s\" \"%s\"",helper,archive);
-    if(!Execute((STRPTR)cmd,0,0)){
-        puts("romm-whdload could not be started.");return -1;
+
+    if(rc){
+        printf("WHDLoad unavailable: %s\n",romm_strerror(rc));
+        return -1;
     }
+
+    printf("WHDLoad ZIP saved: %s\n",archive);
     return 0;
 }
 
@@ -245,15 +244,6 @@ int main(int ac,char**av)
                 cls();printf("RAW download %s...\n",d.fs_name);
                 rc=romm_download_rom(&c,d.id,d.fs_name);
                 printf(rc?"Download failed: %s\n":"Downloaded: %s\n",rc?romm_strerror(rc):d.fs_name);
-                if(!rc){
-                    const char *action=getenv("ROMM_COMMAND");
-                    if(action&&*action&&d.fs_name&&strlen(d.fs_name)<240&&
-                       !strchr(action,'"')&&!strchr(action,'\n')&&!strchr(action,'\r')&&
-                       !strchr(d.fs_name,'"')&&!strchr(d.fs_name,'\n')&&!strchr(d.fs_name,'\r')){
-                        char command[512];
-                        snprintf(command,sizeof(command),"\"%s\" \"%s\"",action,d.fs_name);
-                        if(!Execute((STRPTR)command,0,0))puts("ROMM_COMMAND failed");
-                    }
                 }
                 Delay(75);
             }
