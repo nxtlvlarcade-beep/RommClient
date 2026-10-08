@@ -28,7 +28,7 @@ Beispielkonfiguration erstellen:
 
 In der .env-Datei konfigurieren:
 
-    ROMM_URL=https://play.next-level.fun
+    ROMM_URL=YOUR_ROM_URL
     ROMM_TOKEN=YOUR_ROMM_API_TOKEN
     ROMM_ZMODEM=1
     TELNET_PORT=2323
