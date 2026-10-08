@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+   agent {
+    label 'dev-v1.0'
+}
 
     options {
         timestamps()
