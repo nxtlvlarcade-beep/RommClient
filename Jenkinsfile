@@ -1,5 +1,5 @@
 pipeline {
-    agent agent { label 'dev-v1.0' }
+    agent { label 'dev-v1.0' }
     options {
         timestamps()
         disableConcurrentBuilds()
