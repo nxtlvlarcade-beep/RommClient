@@ -4,9 +4,13 @@
         format console
     }
 
+    handle /whdload/* {
+        reverse_proxy 127.0.0.1:8090
+    }
+
     handle /api/* {
-        reverse_proxy https://play.next-level.fun {
-            header_up Host play.next-level.fun
+        reverse_proxy {$ROMM_URL} {
+            header_up Host {http.reverse_proxy.upstream.hostport}
             header_up Authorization "Bearer {$ROMM_TOKEN}"
             header_up Accept application/json
         }

@@ -119,3 +119,20 @@ Weitere Informationen:
 
 0.9 – Integration des Retro-Gateways und des Build-Agents,
 mit optionalem ZMODEM-Support.
+
+## v1.0 WHDLoad workflow (experimental)
+
+- `D` downloads the original ROM unchanged.
+- `Enter` requests `/whdload/<rom-id>` from the retro gateway.
+- The gateway accepts archives that contain **exactly one `.slave` file**, checks
+  archive paths, extracts with `bsdtar`, and packages the files as a ZIP with
+  `romm-launch.txt`. It does **not** convert ADF/IPF into WHDLoad.
+- Telnet transfers the prepared ZIP using ZMODEM. Extract it on the Amiga and
+  launch its `.slave` with WHDLoad.
+- Native Amiga downloads the prepared ZIP, runs `UnZip -o ... -d ...`, reads
+  `romm-launch.txt` and invokes `ROMM_LAUNCHER` (default `C:WHDLoad`).
+- Install **UnZip** and **WHDLoad** on the Amiga; verify the game requires no
+  additional Kickstart ROM or game-specific installer.
+- The gateway requires `ROMM_URL` and `ROMM_TOKEN`. Do not expose the
+  unauthenticated Telnet service or the proxy directly to the public Internet.
+- **Experimental:** runtime behavior must be validated on real AmigaOS 3.1.
