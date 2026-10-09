@@ -6,7 +6,7 @@
 
 static void usage(const char*x){
     fprintf(stderr,
-      "libromm CLI 0.5\n\n"
+      "libromm CLI 1.1\n\n"
       "Usage:\n"
       "  %s BASE_URL TOKEN platforms\n"
       "  %s BASE_URL TOKEN games PLATFORM_ID [LIMIT] [OFFSET]\n"

@@ -1,4 +1,4 @@
-# libromm 1.1 (development)
+# libromm 1.1
 
 libromm is a C client project for browsing a RomM library from AmigaOS 3.x and terminal environments. Version 1.1 adds a browser-based RetroWeb frontend and first-run configuration for the Docker gateway.
 
@@ -34,4 +34,4 @@ Use only on a trusted LAN. `/config` uses HTTP Basic authentication, and both HT
 
 ## Release status
 
-Development branch: `1.1-dev` (version **1.1**, not the stable `v1.0` tag). Validate the Amiga/TUI builds, browsing, covers, screenshots, downloads, Telnet/ZMODEM and first-run setup before release.
+Stable release: **v1.1**. Includes AmigaOS 3.x applications, CLI, TUI, RetroWeb, Telnet/ZMODEM and web-based first-run configuration.

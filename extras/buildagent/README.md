@@ -1,6 +1,6 @@
 # libromm Build Agent
 
-Docker-based Jenkins inbound agent for compiling libromm and native AmigaOS 3.x applications. This document is maintained in English for the 1.1 development branch.
+Docker-based Jenkins inbound agent for compiling libromm and native AmigaOS 3.x applications. This document describes the build agent for libromm 1.1.
 
 ## Included tools
 

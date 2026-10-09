@@ -78,7 +78,7 @@ static void drawp(const romm_platform_list_t*p,size_t s,size_t top)
 {
     size_t i,end=top+PLATFORM_ROWS;
     if(end>p->count) end=p->count;
-    cls(); puts("libromm-1.0 - Platforms\n");
+    cls(); puts("libromm-1.1 - Platforms\n");
     if(top) puts("  ^ more");
     for(i=top;i<end;i++) {
         marker(i==s);
@@ -110,7 +110,7 @@ static void drawg(const romm_game_list_t*g,size_t s,size_t top,const romm_game_t
     size_t i,end=top+GAME_ROWS;
     if(end>g->count)end=g->count;
     cls();
-    printf("libromm-1.0 - Games\n");
+    printf("libromm-1.1 - Games\n");
     printf("Game %lu / %ld  (loaded %lu-%lu)\n",(unsigned long)(off+s+1),total,
         (unsigned long)(off+1),(unsigned long)(off+g->count));
     for(i=top;i<end;i++){
