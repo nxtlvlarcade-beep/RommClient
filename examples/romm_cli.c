@@ -79,6 +79,14 @@ int main(int ac,char**av){
             if(g.summary&&*g.summary)printf("\nDescription:\n%s\n",g.summary);
             romm_game_free(&g);
         }
+    } else if(!strcmp(av[3],"cover-path")&&ac>=5) {
+        romm_game_t g; long id=strtol(av[4],NULL,10);
+        rc=romm_game_info(&c,id,&g);
+        if(!rc){
+            const char *path=(g.path_cover_small&&*g.path_cover_small)?g.path_cover_small:g.path_cover_large;
+            if(path&&*path)puts(path);
+            romm_game_free(&g);
+        }
     } else if(!strcmp(av[3],"download")&&ac>=6) {
         long id=strtol(av[4],NULL,10);
         rc=romm_download_rom(&c,id,av[5]);
