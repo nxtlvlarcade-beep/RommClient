@@ -40,10 +40,10 @@ while True:
         for line in CONFIG.read_text().splitlines():
             if '=' in line:
                 k, v = line.split('=', 1)
-                if k in ('ROMM_URL', 'ROMM_TOKEN'): config[k] = v
+                if k in ('ROMM_URL', 'ROMM_TOKEN', 'TELNET_PORT', 'ROMM_ZMODEM'): config[k] = v
     env = os.environ.copy()
     env.update(config)
-    current = (env.get('ROMM_URL'), env.get('ROMM_TOKEN'))
+    current = tuple(env.get(k) for k in ('ROMM_URL', 'ROMM_TOKEN', 'TELNET_PORT', 'ROMM_ZMODEM'))
     env.setdefault('ROMM_URL', 'http://127.0.0.1:8099')
     env.setdefault('ROMM_TOKEN', 'not-configured')
     if current != last:
@@ -54,7 +54,7 @@ while True:
         caddy = subprocess.Popen(['caddy', 'run', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile'], env=env)
     if current != last or (children and any(p.poll() is not None for p in children)):
         stop_children()
-        if all(current):
+        if env.get('ROMM_URL') and env.get('ROMM_TOKEN'):
             children = [launch(s, env) for s in services]
             print('RomM services started / configuration reloaded', flush=True)
         else:

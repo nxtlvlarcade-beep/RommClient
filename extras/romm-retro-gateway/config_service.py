@@ -28,12 +28,14 @@ def read_config():
         for line in CONFIG.read_text().splitlines():
             if '=' in line and not line.startswith('#'):
                 k, v = line.split('=', 1)
-                if k in ('ROMM_URL', 'ROMM_TOKEN'): data[k] = v
+                if k in ('ROMM_URL', 'ROMM_TOKEN', 'TELNET_PORT', 'ROMM_ZMODEM'): data[k] = v
     return data
 
 def page(message=''):
     c = read_config()
     url = html.escape(c.get('ROMM_URL', ''), quote=True)
+    port = html.escape(c.get('TELNET_PORT', '2323'), quote=True)
+    zmodem = c.get('ROMM_ZMODEM', '1') == '1'
     return ('<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">'
             '<HTML><HEAD><TITLE>RetroWeb configuration</TITLE></HEAD><BODY>'
             '<H1>RetroWeb configuration</H1><P>' + html.escape(message) + '</P>'
@@ -41,6 +43,8 @@ def page(message=''):
             '<P>RomM URL: <INPUT NAME="url" SIZE="48" VALUE="' + url + '"></P>'
             '<P>API token: <INPUT TYPE="password" NAME="token" SIZE="48" VALUE=""></P>'
             '<P>Leave token blank to retain the saved token.</P>'
+            '<P>Telnet port: <INPUT NAME="telnet_port" SIZE="6" VALUE="' + port + '"></P>'
+            '<P>ZMODEM: <SELECT NAME="zmodem"><OPTION VALUE="1"' + (' SELECTED' if zmodem else '') + '>Enabled</OPTION><OPTION VALUE="0"' + ('' if zmodem else ' SELECTED') + '>Disabled</OPTION></SELECT></P>'
             '<INPUT TYPE="submit" VALUE="Save and test"></FORM>'
             '<P><A HREF="/">Return to RetroWeb</A></P></BODY></HTML>')
 
@@ -72,6 +76,11 @@ class Handler(BaseHTTPRequestHandler):
                 form = urllib.parse.parse_qs(self.rfile.read(size).decode('utf-8'), keep_blank_values=True)
                 url = form.get('url', [''])[0].strip().rstrip('/')
                 token = form.get('token', [''])[0].strip() or read_config().get('ROMM_TOKEN', '')
+                port = int(form.get('telnet_port', ['2323'])[0])
+                if not 1024 <= port <= 65535 or port in (80, 8080, 8090, 8091, 8092, 8093):
+                    raise ValueError('Telnet port must be 1024-65535 and not reserved by gateway')
+                zmodem = form.get('zmodem', ['1'])[0]
+                if zmodem not in ('0', '1'): raise ValueError('Invalid ZMODEM setting')
                 p = urllib.parse.urlsplit(url)
                 if p.scheme not in ('http', 'https') or not p.hostname or p.username or p.password or p.query or p.fragment:
                     raise ValueError('Invalid RomM URL')
@@ -83,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
                 fd, tmp = tempfile.mkstemp(dir=ROOT, prefix='.romm-', text=True)
                 try:
                     with os.fdopen(fd, 'w') as f:
-                        f.write('ROMM_URL=' + url + '\nROMM_TOKEN=' + token + '\n')
+                        f.write('ROMM_URL=' + url + '\nROMM_TOKEN=' + token + '\nTELNET_PORT=' + str(port) + '\nROMM_ZMODEM=' + zmodem + '\n')
                         f.flush(); os.fsync(f.fileno())
                     os.chmod(tmp, 0o600)
                     os.replace(tmp, CONFIG)

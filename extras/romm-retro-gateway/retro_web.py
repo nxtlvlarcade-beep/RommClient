@@ -231,11 +231,13 @@ class Handler(BaseHTTPRequestHandler):
         g = api('/api/roms/' + str(gid))
         paths = cover_paths(g)
         if not paths:
+            print('No usable cover paths for ROM %s: %r' % (gid, {k:g.get(k) for k in ('path_cover_small','path_cover_large','url_cover')}), flush=True)
             return self.page('No cover', '<P>No cover available.</P>', 404)
         for path in paths:
             try:
                 return self.image_reply(path, params)
-            except (urllib.error.HTTPError, ValueError):
+            except (urllib.error.HTTPError, urllib.error.URLError, ValueError, OSError) as exc:
+                print('Cover fetch failed for ROM %s path %r: %s' % (gid, path, exc), flush=True)
                 continue
         return self.page('No cover', '<P>RomM cover paths did not return an image.</P>', 404)
 
