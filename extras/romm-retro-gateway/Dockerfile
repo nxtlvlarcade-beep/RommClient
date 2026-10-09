@@ -25,6 +25,8 @@ RUN pip install --no-cache-dir "Pillow>=10,<13"
 COPY --from=builder /build/romm-tui /usr/local/bin/romm-tui
 COPY --from=builder /build/romm-cli /usr/local/bin/romm-cli
 COPY extras/romm-retro-gateway/retro_web.py /usr/local/bin/retro_web.py
+COPY extras/romm-retro-gateway/config_service.py /usr/local/bin/config_service.py
+COPY extras/romm-retro-gateway/start_gateway.py /usr/local/bin/start_gateway.py
 COPY extras/romm-retro-gateway/telnet_server.py /usr/local/bin/telnet_server.py
 COPY extras/romm-retro-gateway/whdload_service.py /usr/local/bin/whdload_service.py
 COPY extras/romm-retro-gateway/whdload_catalog.py /usr/local/bin/whdload_catalog.py
@@ -40,4 +42,4 @@ WORKDIR /downloads
 EXPOSE 80 2323 8080
 
 # Caddy und Telnet gemeinsam starten
-CMD ["sh", "-c", "python3 -u /usr/local/bin/whdload_service.py & python3 -u /usr/local/bin/index_service.py & python3 -u /usr/local/bin/retro_web.py & caddy run --config /etc/caddy/Caddyfile --adapter caddyfile & exec python3 -u /usr/local/bin/telnet_server.py"]
+CMD ["python3", "-u", "/usr/local/bin/start_gateway.py"]

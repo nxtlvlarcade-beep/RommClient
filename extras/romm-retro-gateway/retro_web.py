@@ -11,8 +11,8 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-BASE = os.environ['ROMM_URL'].rstrip('/')
-TOKEN = os.environ['ROMM_TOKEN']
+BASE = os.environ.get('ROMM_URL', '').rstrip('/')
+TOKEN = os.environ.get('ROMM_TOKEN', '')
 PAGE_SIZE = 30
 MAX_IMAGE = 4 * 1024 * 1024
 
@@ -51,6 +51,8 @@ def local_image_path(value):
         if (parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc):
             return None
         value = parsed.path + (('?' + parsed.query) if parsed.query else '')
+    if not value.startswith('/') and not parsed.scheme and not parsed.netloc:
+        value = '/' + value
     if not value.startswith('/') or value.startswith('//') or '\\' in value:
         return None
     # RomM installations may live under a reverse-proxy prefix.
@@ -59,12 +61,17 @@ def local_image_path(value):
         value = value[len(prefix):]
     return value
 
-def cover_path(meta):
+def cover_paths(meta):
+    """Return all candidate cover paths; a stale thumbnail must not hide a valid full cover."""
+    found = []
     for key in ('path_cover_small', 'path_cover_large', 'url_cover'):
-        p = local_image_path(meta.get(key))
-        if p:
-            return p
-    return None
+        path = local_image_path(meta.get(key))
+        if path and path not in found:
+            found.append(path)
+    return found
+
+def cover_path(meta):
+    return next(iter(cover_paths(meta)), None)
 
 def screenshots(meta):
     """Flatten documented merged/user screenshot fields without assuming one shape."""
@@ -222,10 +229,15 @@ class Handler(BaseHTTPRequestHandler):
     def cover(self, params):
         gid = rom_id(params.get('id', [''])[0])
         g = api('/api/roms/' + str(gid))
-        path = cover_path(g)
-        if not path:
+        paths = cover_paths(g)
+        if not paths:
             return self.page('No cover', '<P>No cover available.</P>', 404)
-        self.image_reply(path, params)
+        for path in paths:
+            try:
+                return self.image_reply(path, params)
+            except (urllib.error.HTTPError, ValueError):
+                continue
+        return self.page('No cover', '<P>RomM cover paths did not return an image.</P>', 404)
 
     def screenshot(self, params):
         gid = rom_id(params.get('id', [''])[0])
