@@ -12,7 +12,7 @@ COPY . ./
 RUN make clean && make romm-tui romm-cli
 
 
-# Stage 2: Gateway mit Caddy und ZMODEM
+# Stage 2: Gateway with Caddy and RetroWeb REST frontend
 FROM python:3.12-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
