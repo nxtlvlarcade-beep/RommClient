@@ -25,7 +25,18 @@ def query(**kw):
 def upstream(path, accept='application/json'):
     if not path.startswith('/') or path.startswith('//'):
         raise ValueError('Invalid upstream path')
-    req = urllib.request.Request(BASE + path, headers={
+    # RomM 5.3.x may return cover paths with unescaped timestamps, e.g.
+    # /assets/.../small.png?ts=2026-10-02 22:50:14. Encode the URL
+    # before passing it to urllib/http.client (otherwise InvalidURL -> 502).
+    # Preserve existing percent escapes and query separators.
+    url = urllib.parse.urlsplit(BASE + path)
+    safe_url = urllib.parse.urlunsplit((
+        url.scheme, url.netloc,
+        urllib.parse.quote(url.path, safe="/%:@!$&'()*+,;=-._~"),
+        urllib.parse.quote(url.query, safe="=&%/:;+?,@!$'()*-._~"),
+        url.fragment,
+    ))
+    req = urllib.request.Request(safe_url, headers={
         'Authorization': 'Bearer ' + TOKEN, 'Accept': accept,
         'User-Agent': 'RomM-RetroWeb/1.1'})
     return urllib.request.urlopen(req, timeout=45)

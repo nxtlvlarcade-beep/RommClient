@@ -1,83 +1,62 @@
-# libromm Build-Agent
+# libromm Build Agent
 
-Docker-basierter Jenkins Inbound-Agent zum Kompilieren von libromm
-und nativen AmigaOS-3.x-Anwendungen.
+Docker-based Jenkins inbound agent for compiling libromm and native AmigaOS 3.x applications. This document is maintained in English for the 1.1 development branch.
 
-## Komponenten
+## Included tools
 
-- Jenkins Inbound-Agent (Java 21)
-- GCC / G++ / Make für Linux
-- Git und Build-Werkzeuge
-- libcurl-Entwicklungsbibliotheken
-- AmigaOS-m68k-Cross-Compiler
+- Jenkins inbound agent (Java 21)
+- GCC, G++, Make, Git and Linux build utilities
+- libcurl development libraries
+- AmigaOS m68k cross-compiler, built from [AmigaPorts/m68k-amigaos-gcc](https://github.com/AmigaPorts/m68k-amigaos-gcc)
 
-Der Cross-Compiler wird aus folgendem Projekt erstellt:
+The Amiga toolchain is installed in `/opt/amiga`; `/opt/amiga/bin` is added to `PATH` automatically.
 
-https://github.com/AmigaPorts/m68k-amigaos-gcc
+## Build the Docker image
 
-Installationsverzeichnis im Container:
+From the repository root:
 
-    /opt/amiga
+```sh
+docker build -f extras/buildagent/Dockerfile -t libromm-build-agent:1.1 extras/buildagent
+```
 
-Der Compiler-Pfad wird automatisch zu PATH hinzugefügt.
+Building the cross-compiler may take a considerable amount of time.
 
-## Docker-Image erstellen
+## Configure Jenkins
 
-Vom Hauptverzeichnis des Repositorys:
+Create a Jenkins agent with these settings:
 
-    docker build \
-      -f extras/buildagent/Dockerfile \
-      -t libromm-build-agent:v0.9 \
-      extras/buildagent
+- **Type:** Permanent Agent
+- **Launch method:** Inbound Agent
+- **Remote root directory:** `/home/jenkins/agent`
 
-Hinweis: Die Erstellung des Cross-Compilers kann längere Zeit dauern.
+Set the agent name and connection parameters to match your Jenkins controller.
 
-## Jenkins-Konfiguration
+## Run the agent
 
-In Jenkins einen Agenten mit folgenden Eigenschaften erstellen:
+Example for a Jenkins controller with WebSocket support:
 
-- Typ: Permanent Agent
-- Launch-Methode: Inbound Agent
-- Remote Root Directory: /home/jenkins/agent
+```sh
+docker run -d \
+  --name libromm-build-agent \
+  --restart unless-stopped \
+  -e JENKINS_URL=https://jenkins.example.org/ \
+  -e JENKINS_AGENT_NAME=libromm-build-agent \
+  -e JENKINS_SECRET=YOUR_AGENT_SECRET \
+  libromm-build-agent:1.1
+```
 
-Den Agent-Namen und die Verbindungseinstellungen entsprechend
-der Jenkins-Installation konfigurieren.
+- `JENKINS_URL`: Jenkins controller URL.
+- `JENKINS_AGENT_NAME`: name of the agent configured in Jenkins.
+- `JENKINS_SECRET`: inbound-agent connection secret. Never commit this value to Git.
 
-## Container starten
-
-Beispiel für einen Jenkins-Controller mit WebSocket-Unterstützung:
-
-    docker run -d \
-      --name libromm-build-agent \
-      --restart unless-stopped \
-      -e JENKINS_URL=https://jenkins.example.org/ \
-      -e JENKINS_AGENT_NAME=libromm-build-agent \
-      -e JENKINS_SECRET=YOUR_AGENT_SECRET \
-      libromm-build-agent:v0.9
-
-JENKINS_URL:
-Adresse des Jenkins-Controllers.
-
-JENKINS_AGENT_NAME:
-Name des in Jenkins konfigurierten Agents.
-
-JENKINS_SECRET:
-Verbindungs-Secret des Jenkins-Agents.
-
-Das Secret niemals in Git speichern.
-
-Für Jenkins-Verbindungen über WebSocket muss der Agent
-mit der entsprechenden WebSocket-Option gestartet werden.
-Die genaue Startkonfiguration hängt vom Jenkins-Controller ab.
+For Jenkins connections over WebSocket, configure the inbound agent's WebSocket option according to the controller and agent-launch setup.
 
 ## Builds
 
-Der Agent kann Linux-Binaries und AmigaOS-m68k-Binaries
-erstellen, sofern die jeweiligen Makefiles und Abhängigkeiten
-für die Zielplattform eingerichtet sind.
+The agent can build Linux and AmigaOS m68k binaries when the corresponding Makefiles and dependencies are configured for each target.
 
-## Sicherheit
+## Security
 
-- Jenkins-Secrets nicht ins Repository aufnehmen.
-- Agent-Zugriff auf vertrauenswürdige Jenkins-Controller begrenzen.
-- Container-Images regelmäßig aktualisieren.
+- Never store Jenkins secrets in the repository.
+- Connect the agent only to trusted Jenkins controllers.
+- Update container images regularly.

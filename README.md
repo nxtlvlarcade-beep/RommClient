@@ -1,53 +1,37 @@
-# libromm 1.0
+# libromm 1.1 (development)
 
-libromm is a C client project for browsing a RomM library from retro and terminal environments.
+libromm is a C client project for browsing a RomM library from AmigaOS 3.x and terminal environments. Version 1.1 adds a browser-based RetroWeb frontend and first-run configuration for the Docker gateway.
 
-## Release 1.0 highlights
+## Components
 
-- Native AmigaOS 3.x client for platform and game browsing.
-- Terminal-based TUI for browsing platforms, games, and metadata.
-- Interactive game search with visible text input.
-- RAW downloads and gateway-assisted WHDLoad ZIP downloads.
-- Docker retro gateway with a persistent `/downloads` mount.
-- Unified application title: `libromm-1.0`.
+- Native AmigaOS 3.x client (`examples/romm_amiga.c`).
+- Terminal/Telnet TUI (`examples/romm_tui.c`).
+- Retro gateway with RomM REST API proxy, RAW and WHDLoad download services.
+- RetroWeb: simple HTTP/1.0-compatible HTML, game search, covers and screenshots, without JavaScript.
+- Browser-based configuration at `/config` (RomM URL/token, Telnet port, ZMODEM).
+- Jenkins build agent (`extras/buildagent/`).
 
-## Repository components
-
-- `examples/romm_amiga.c` — native Amiga client.
-- `examples/romm_tui.c` — terminal user interface.
-- `extras/romm-retro-gateway/` — Docker-based gateway and supporting services.
-
-## Building the terminal client
+## Build
 
 From the repository root:
 
-    make clean
-    make -j2
+```sh
+make clean && make -j2
+make -f Makefile.amiga clean && make -f Makefile.amiga -j2
+# Gateway image
+docker build -f extras/romm-retro-gateway/Dockerfile -t romm-retro-gateway:1.1-rest .
+```
 
-## Building the Amiga client
+The Amiga build requires the configured m68k/AmigaOS cross-compiler.
 
-Use the Amiga toolchain and build environment configured for this project:
+## Gateway installation
 
-    make -f Makefile.amiga clean
-    make -f Makefile.amiga -j2
-
-## Building the Docker gateway
-
-Run this command from the **repository root** (not from the gateway subdirectory):
-
-    docker build --no-cache -f extras/romm-retro-gateway/Dockerfile -t romm-retro-gateway:1.0 .
-
-See [Gateway README](extras/romm-retro-gateway/README.md) for an example deployment.
-
-## Testing
-
-Retain and run the project's existing tests and build checks. Before publishing a release, verify the Linux/TUI build, the Amiga build, gateway startup, platform and game browsing, interactive search, and downloads.
+See **[Gateway installation and first-run configuration](extras/romm-retro-gateway/README.md)**. No pre-created `.env` is required for a fresh Docker installation. Mount `/downloads` persistently; retrieve the setup password from Docker logs and visit `http://GATEWAY-IP/config`.
 
 ## Security
 
-Keep RomM API tokens in an untracked `.env` file. Do not expose the plaintext Telnet service directly to the public internet. Prefer a trusted local network.
+Use only on a trusted LAN. `/config` uses HTTP Basic authentication, and both HTTP and Telnet are unencrypted. Do not expose the gateway to the public internet. Keep the persistent configuration and setup password private; do not commit API tokens.
 
-## Release
+## Release status
 
-Version: **1.0**  
-Git tag: **`v1.0`**
+Development branch: `1.1-dev` (version **1.1**, not the stable `v1.0` tag). Validate the Amiga/TUI builds, browsing, covers, screenshots, downloads, Telnet/ZMODEM and first-run setup before release.
