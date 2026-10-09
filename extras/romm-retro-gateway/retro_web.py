@@ -2,6 +2,7 @@
 """RetroWeb: stateless, JavaScript-free HTTP/1.0 frontend for the RomM REST API."""
 import html
 import io
+from PIL import Image, ImageOps, UnidentifiedImageError
 import json
 import os
 import re
@@ -39,12 +40,83 @@ def rom_id(raw):
         raise ValueError('Invalid ROM ID')
     return n
 
+def local_image_path(value):
+    """Accept only paths on the configured RomM origin; never proxy arbitrary hosts."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip()
+    parsed = urllib.parse.urlsplit(value)
+    origin = urllib.parse.urlsplit(BASE)
+    if parsed.scheme or parsed.netloc:
+        if (parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc):
+            return None
+        value = parsed.path + (('?' + parsed.query) if parsed.query else '')
+    if not value.startswith('/') or value.startswith('//') or '\\' in value:
+        return None
+    # RomM installations may live under a reverse-proxy prefix.
+    prefix = origin.path.rstrip('/')
+    if prefix and value.startswith(prefix + '/'):
+        value = value[len(prefix):]
+    return value
+
 def cover_path(meta):
-    for key in ('path_cover_small', 'path_cover_large'):
-        p = meta.get(key)
-        if isinstance(p, str) and p.startswith('/') and not p.startswith('//'):
+    for key in ('path_cover_small', 'path_cover_large', 'url_cover'):
+        p = local_image_path(meta.get(key))
+        if p:
             return p
     return None
+
+def screenshots(meta):
+    """Flatten documented merged/user screenshot fields without assuming one shape."""
+    found = []
+    seen = set()
+    for field in ('merged_screenshots', 'user_screenshots', 'all_user_screenshots', 'screenshot_path'):
+        entries = meta.get(field) or []
+        if isinstance(entries, (str, dict, int)):
+            entries = [entries]
+        if not isinstance(entries, list):
+            continue
+        for item in entries:
+            if isinstance(item, dict):
+                candidate = None
+                for key in ('path', 'url', 'screenshot_path', 'file_path', 'image_url', 'url_screenshot'):
+                    candidate = local_image_path(item.get(key))
+                    if candidate: break
+                if not candidate:
+                    sid = item.get('id')
+                    if isinstance(sid, int) and sid > 0:
+                        candidate = '/api/screenshots/%d/content' % sid
+            else:
+                candidate = local_image_path(item)
+                if not candidate and isinstance(item, int) and item > 0:
+                    candidate = '/api/screenshots/%d/content' % item
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                found.append(candidate)
+            if len(found) >= 12:
+                return found
+    return found
+
+def image_data(path, fmt='gif'):
+    with upstream(path, 'image/*') as response:
+        data = response.read(MAX_IMAGE + 1)
+        if len(data) > MAX_IMAGE:
+            raise ValueError('Image exceeds size limit')
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((320, 320))
+            if fmt == 'jpg':
+                img = img.convert('RGB')
+                out = io.BytesIO()
+                img.save(out, 'JPEG', quality=75, optimize=True)
+                return 'image/jpeg', out.getvalue()
+            img = img.convert('RGB').quantize(colors=128)
+            out = io.BytesIO()
+            img.save(out, 'GIF', optimize=True)
+            return 'image/gif', out.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError('Invalid image data') from exc
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
@@ -126,6 +198,11 @@ class Handler(BaseHTTPRequestHandler):
         body = '<H2>' + esc(name) + '</H2>'
         if cover_path(g):
             body += '<P><IMG SRC="/cover' + query(id=gid) + '" ALT="Cover for ' + esc(name) + '"></P>'
+        shots = screenshots(g)
+        if shots:
+            body += '<H3>Screenshots</H3>'
+            for i in range(len(shots)):
+                body += '<P><IMG SRC="/screenshot' + query(id=gid, n=i) + '" ALT="Screenshot ' + str(i + 1) + '"></P>'
         for label, key in [('Platform', 'platform_display_name'), ('Filename', 'fs_name'), ('Summary', 'summary')]:
             if g.get(key): body += '<P><B>' + label + ':</B> ' + esc(g[key]) + '</P>'
         body += '<P><A HREF="/download' + query(id=gid) + '">Download ROM</A></P>'
@@ -133,22 +210,30 @@ class Handler(BaseHTTPRequestHandler):
             body += '<P><A HREF="/games' + query(p=g['platform_id']) + '">Back to games</A></P>'
         self.page(name, body)
 
+    def image_reply(self, path, params):
+        fmt = params.get('format', ['gif'])[0].lower()
+        if fmt not in ('gif', 'jpg'):
+            raise ValueError('Invalid image format')
+        kind, data = image_data(path, fmt)
+        self.headers_out(200, kind, len(data))
+        if self.command != 'HEAD':
+            self.wfile.write(data)
+
     def cover(self, params):
         gid = rom_id(params.get('id', [''])[0])
         g = api('/api/roms/' + str(gid))
         path = cover_path(g)
         if not path:
             return self.page('No cover', '<P>No cover available.</P>', 404)
-        # Only a server-returned relative path; never allow absolute external URLs.
-        with upstream(path, 'image/*') as r:
-            kind = r.headers.get_content_type()
-            if kind not in ('image/jpeg', 'image/gif', 'image/png', 'image/webp'):
-                raise ValueError('Unsupported cover type')
-            data = r.read(MAX_IMAGE + 1)
-            if len(data) > MAX_IMAGE:
-                raise ValueError('Cover exceeds size limit')
-        self.headers_out(200, kind, len(data))
-        if self.command != 'HEAD': self.wfile.write(data)
+        self.image_reply(path, params)
+
+    def screenshot(self, params):
+        gid = rom_id(params.get('id', [''])[0])
+        n = int(params.get('n', ['0'])[0])
+        shots = screenshots(api('/api/roms/' + str(gid)))
+        if n < 0 or n >= len(shots):
+            return self.page('No screenshot', '<P>No screenshot available.</P>', 404)
+        self.image_reply(shots[n], params)
 
     def download(self, params):
         gid = rom_id(params.get('id', [''])[0])
@@ -188,6 +273,7 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == '/games': return self.listing(params)
             if parsed.path == '/game': return self.detail(params)
             if parsed.path == '/cover': return self.cover(params)
+            if parsed.path == '/screenshot': return self.screenshot(params)
             if parsed.path == '/download': return self.download(params)
             return self.page('Not found', '<P>Page not found.</P>', 404)
         except (ValueError, KeyError, TypeError) as e:

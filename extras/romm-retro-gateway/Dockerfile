@@ -20,6 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 -d /downloads -s /usr/sbin/nologin retro
 
+RUN pip install --no-cache-dir "Pillow>=10,<13"
+
 COPY --from=builder /build/romm-tui /usr/local/bin/romm-tui
 COPY --from=builder /build/romm-cli /usr/local/bin/romm-cli
 COPY extras/romm-retro-gateway/retro_web.py /usr/local/bin/retro_web.py
